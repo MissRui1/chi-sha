@@ -199,25 +199,39 @@ const getWeatherContext = (month: number): string => {
   return "";
 };
 
-const generateContext = (timeInfo: TimeContext): string => {
+const generateContext = (timeInfo: TimeContext, mealTime: string): string => {
   const contextParts: string[] = [];
 
   contextParts.push(`【场景信息】`);
   contextParts.push(`${timeInfo.dayName} ${timeInfo.hour}点`);
 
-  // 时间段规则
-  if (timeInfo.timeOfDay === "早餐") {
-    contextParts.push(
-      `现在是早餐时间：优先推荐快速、热乎、容易获得的选项`
-    );
-  } else if (timeInfo.timeOfDay === "下午") {
-    contextParts.push(
-      `现在是下午：推荐轻食、小满足、下午茶感的食物`
-    );
-  } else if (timeInfo.timeOfDay === "深夜") {
-    contextParts.push(
-      `现在是深夜：提高夜宵、满足感、热食的偏好，避免太清淡的选项`
-    );
+  // 优先使用用户选择的 mealTime，如果未指定则使用系统时间
+  let timeContext = timeInfo.timeOfDay;
+  let mealTimeDesc = "";
+
+  if (mealTime === "早餐") {
+    mealTimeDesc = "现在是早餐时间：优先推荐快速、热乎、容易获得的选项";
+  } else if (mealTime === "午餐") {
+    mealTimeDesc = "现在是午餐时间：推荐营养均衡、满足感适中的选项";
+  } else if (mealTime === "下午茶") {
+    mealTimeDesc = "现在是下午茶时间：推荐轻食、小满足、下午茶感的食物";
+  } else if (mealTime === "晚餐") {
+    mealTimeDesc = "现在是晚餐时间：推荐满足感强、容易获得的选项";
+  } else if (mealTime === "夜宵") {
+    mealTimeDesc = "现在是夜宵时间：提高夜宵、满足感、热食的偏好，避免太清淡的选项";
+  } else {
+    // 如果 mealTime 不匹配预设值，则使用系统时间判断
+    if (timeInfo.timeOfDay === "早餐") {
+      mealTimeDesc = "现在是早餐时间：优先推荐快速、热乎、容易获得的选项";
+    } else if (timeInfo.timeOfDay === "下午") {
+      mealTimeDesc = "现在是下午：推荐轻食、小满足、下午茶感的食物";
+    } else if (timeInfo.timeOfDay === "深夜") {
+      mealTimeDesc = "现在是深夜：提高夜宵、满足感、热食的偏好，避免太清淡的选项";
+    }
+  }
+
+  if (mealTimeDesc) {
+    contextParts.push(mealTimeDesc);
   }
 
   // 星期规则
@@ -293,7 +307,7 @@ export async function POST(req: Request) {
 
     // 生成时间上下文
     const timeInfo = getTimeInfo();
-    const contextPrompt = generateContext(timeInfo);
+    const contextPrompt = generateContext(timeInfo, mealTime);
 
     const client = new OpenAI({
       apiKey:
