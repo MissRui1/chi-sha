@@ -23,8 +23,12 @@ const readEnv = (value: string | undefined) => {
 };
 
 const getKvConfig = () => {
-  const url = readEnv(process.env.KV_REST_API_URL);
-  const token = readEnv(process.env.KV_REST_API_TOKEN);
+  const url =
+    readEnv(process.env.KV_REST_API_URL) ??
+    readEnv(process.env.UPSTASH_REDIS_REST_URL);
+  const token =
+    readEnv(process.env.KV_REST_API_TOKEN) ??
+    readEnv(process.env.UPSTASH_REDIS_REST_TOKEN);
 
   if (!url || !token) {
     return null;
@@ -101,7 +105,12 @@ export async function POST(req: Request) {
     if (!getKvConfig()) {
       return Response.json(
         {
-          error: "云同步未配置",
+          error:
+            "云同步未配置：需要 KV_REST_API_URL/KV_REST_API_TOKEN 或 UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN",
+          missing: [
+            "KV_REST_API_URL 或 UPSTASH_REDIS_REST_URL",
+            "KV_REST_API_TOKEN 或 UPSTASH_REDIS_REST_TOKEN",
+          ],
           ok: false,
         },
         { status: 503 }

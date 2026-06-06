@@ -11,6 +11,10 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image";
 import {
+  curatedDishNames,
+  normalizeFoodName,
+} from "@/lib/dish-database";
+import {
   readMealPhoto,
   saveMealPhoto,
 } from "@/lib/photo-store";
@@ -71,6 +75,35 @@ type SyncRecord = {
   updatedAt: string;
 };
 
+type SpeechRecognitionResultEvent = Event & {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult:
+    | ((event: SpeechRecognitionResultEvent) => void)
+    | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 const defaultMenuDishes = [
   "番茄炒蛋",
   "青椒土豆丝",
@@ -84,56 +117,7 @@ const defaultMenuDishes = [
   "紫菜蛋花汤",
 ];
 
-const fateFallbackFoods = [
-  "番茄牛腩饭",
-  "麻辣烫",
-  "照烧鸡腿饭",
-  "酸菜鱼",
-  "日式咖喱饭",
-  "越南牛肉粉",
-  "虾仁滑蛋饭",
-  "菌菇鸡汤面",
-  "牛肉河粉",
-  "卤肉饭",
-  "黄焖鸡米饭",
-  "三鲜馄饨",
-  "葱油拌面",
-  "重庆小面",
-  "广式烧鸭饭",
-  "海南鸡饭",
-  "砂锅米线",
-  "铁板牛柳饭",
-  "羊肉泡馍",
-  "肠粉",
-  "鸡蛋灌饼",
-  "水饺",
-  "牛肉拉面",
-  "香菇滑鸡饭",
-  "椒麻鸡",
-  "石锅拌饭",
-  "寿司拼盘",
-  "泰式冬阴功汤",
-  "墨西哥卷饼",
-  "意面",
-  "烤鱼",
-  "冒菜",
-  "小笼包",
-  "生煎包",
-  "牛肉汉堡",
-  "鸡肉卷",
-  "鳗鱼饭",
-  "咖喱牛腩饭",
-  "蒸蛋配米饭",
-  "皮蛋瘦肉粥",
-  "凉皮",
-  "麻酱拌面",
-  "锅包肉",
-  "干锅花菜",
-  "粉蒸肉",
-  "白切鸡",
-  "莲藕排骨汤",
-  "酸辣土豆丝",
-];
+const fateFallbackFoods = curatedDishNames;
 
 const pickRandom = <T,>(items: T[]) =>
   items[Math.floor(Math.random() * items.length)];
@@ -146,8 +130,7 @@ const uniq = (items: string[]) =>
         item && arr.indexOf(item) === index
     );
 
-const normalizeDishName = (value: string) =>
-  value.replace(/\s+/g, "").toLowerCase();
+const normalizeDishName = normalizeFoodName;
 
 const mergeMemoryRecords = (
   current: MemoryItem[],
@@ -515,13 +498,13 @@ const archiveLegacyStorageKey = (
   }
 };
 
-const readMemory = (): MemoryItem[] => {
+const readMemory = (targetUserId?: string): MemoryItem[] => {
   if (typeof window === "undefined") {
     return [];
   }
 
   try {
-    const userId = getOrCreateUserId();
+    const userId = targetUserId || getOrCreateUserId();
     const userKey = getUserStorageKey(userId, "memory");
     const savedUserMemory = localStorage.getItem(userKey);
     const savedLegacyMemory = localStorage.getItem("memory");
@@ -557,20 +540,32 @@ const readMemory = (): MemoryItem[] => {
   }
 };
 
-const readMenu = (): string[] => {
+const readMenu = (
+  targetUserId?: string,
+  options: {
+    fallbackToDefault?: boolean;
+    migrateLegacy?: boolean;
+  } = {}
+): string[] => {
   if (typeof window === "undefined") {
     return [];
   }
 
   try {
-    const userId = getOrCreateUserId();
+    const {
+      fallbackToDefault = true,
+      migrateLegacy = true,
+    } = options;
+    const userId = targetUserId || getOrCreateUserId();
     const userKey = getUserStorageKey(userId, "myMenu");
     const savedUserMenu = localStorage.getItem(userKey);
-    const savedLegacyMenu = localStorage.getItem("myMenu");
+    const savedLegacyMenu = migrateLegacy
+      ? localStorage.getItem("myMenu")
+      : null;
     const savedMenu = savedUserMenu ?? savedLegacyMenu;
 
     if (!savedMenu) {
-      return defaultMenuDishes;
+      return fallbackToDefault ? defaultMenuDishes : [];
     }
 
     const parsed = JSON.parse(savedMenu);
@@ -727,6 +722,8 @@ export default function Home() {
   const [reason, setReason] =
     useState("");
 
+  const [acceptedFood, setAcceptedFood] = useState("");
+
   const [loading, setLoading] =
     useState(false);
 
@@ -789,16 +786,30 @@ export default function Home() {
   const [candidateFoods, setCandidateFoods] =
     useState<string[]>([]);
 
+  const [manualDiaryFood, setManualDiaryFood] =
+    useState("");
+
+  const [manualDiaryNote, setManualDiaryNote] =
+    useState("");
+
+  const [manualInspiration, setManualInspiration] =
+    useState("");
+
+  const [voiceTarget, setVoiceTarget] =
+    useState<"diary" | "inspiration" | null>(null);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const savedAccount = getStoredAccount();
       const uid = savedAccount?.userId || getOrCreateUserId();
-      const savedMemory = readMemory();
-      const savedMenu = readMenu();
+      const savedMemory = readMemory(uid);
+      const savedMenu = readMenu(uid);
 
       setAccountSession(savedAccount);
       setLoginAccount(savedAccount?.account ?? "");
       setUserId(uid);
+      setPhotoUrls({});
+      setMissingPhotoIds([]);
       setMemory(savedMemory);
       setInsights(buildInsights(savedMemory));
       setMyMenu(savedMenu);
@@ -808,6 +819,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
     const knownMissing = new Set(missingPhotoIds);
     const missingIds = memory
       .map((item) => item.imageId)
@@ -870,7 +885,7 @@ export default function Home() {
     setter((prev) =>
       prev.includes(value)
         ? prev.filter((item) => item !== value)
-        : [...prev, value]
+        : [...prev, value].slice(-4)
     );
   };
 
@@ -921,7 +936,13 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error("sync unavailable");
+        const errorData = (await response
+          .json()
+          .catch(() => null)) as {
+          error?: string;
+        } | null;
+
+        throw new Error(errorData?.error ?? "sync unavailable");
       }
 
       const data = (await response.json()) as {
@@ -940,6 +961,15 @@ export default function Home() {
       const remoteMenu = uniq(data.record.myMenu ?? []);
 
       if (mode === "pull") {
+        safeSetLocalStorage(
+          getUserStorageKey(session.userId, "memory"),
+          JSON.stringify(remoteMemory)
+        );
+        safeSetLocalStorage(
+          getUserStorageKey(session.userId, "myMenu"),
+          JSON.stringify(remoteMenu)
+        );
+
         setMemory(remoteMemory);
         setInsights(buildInsights(remoteMemory));
         setMyMenu(remoteMenu.length > 0 ? remoteMenu : defaultMenuDishes);
@@ -950,6 +980,15 @@ export default function Home() {
           session.userId
         );
         const mergedMenu = uniq([...nextMenu, ...remoteMenu]);
+
+        safeSetLocalStorage(
+          getUserStorageKey(session.userId, "memory"),
+          JSON.stringify(mergedMemory)
+        );
+        safeSetLocalStorage(
+          getUserStorageKey(session.userId, "myMenu"),
+          JSON.stringify(mergedMenu)
+        );
 
         setMemory(mergedMemory);
         setInsights(buildInsights(mergedMemory));
@@ -996,6 +1035,49 @@ export default function Home() {
     [accountSession, syncAccountData]
   );
 
+  const startVoiceInput = (
+    target: "diary" | "inspiration"
+  ) => {
+    const speechWindow = window as SpeechWindow;
+    const Recognition =
+      speechWindow.SpeechRecognition ??
+      speechWindow.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      toast.error("当前浏览器不支持语音输入");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = "zh-CN";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    setVoiceTarget(target);
+
+    recognition.onresult = (event) => {
+      const text =
+        event.results[0]?.[0]?.transcript?.trim() ?? "";
+
+      if (!text) {
+        return;
+      }
+
+      if (target === "diary") {
+        setManualDiaryFood(text);
+      } else {
+        setManualInspiration(text);
+      }
+    };
+    recognition.onerror = () => {
+      toast.error("语音识别失败，请再试一次");
+      setVoiceTarget(null);
+    };
+    recognition.onend = () => {
+      setVoiceTarget(null);
+    };
+    recognition.start();
+  };
+
   // 灵感 AI
   const generateInspirations =
     useCallback(async () => {
@@ -1018,6 +1100,7 @@ export default function Home() {
                 mood: mood.join("、"),
                 mealTime,
                 memory: formatMemoryText(memory),
+                nonce: `${Date.now()}-${Math.random()}`,
               }),
             }
           );
@@ -1032,7 +1115,13 @@ export default function Home() {
         const parsed =
           JSON.parse(cleanJson(data.result));
 
-        setInspirations(parsed);
+        setInspirations((prev) => {
+          const manual = prev.filter((item) =>
+            item.desc.includes("自己想到")
+          );
+
+          return [...manual.slice(0, 3), ...parsed].slice(0, 12);
+        });
       } catch (error) {
         console.log(error);
       }
@@ -1140,14 +1229,33 @@ export default function Home() {
     setSyncLoading(true);
 
     try {
+      const currentUserId = userId || getOrCreateUserId();
+      const currentMemory = memory;
+      const currentMenu = readMenu(currentUserId, {
+        fallbackToDefault: false,
+      });
       setAccountSession(session);
       setUserId(session.userId);
-      const localMemory = readMemory();
-      const localMenu = readMenu();
+      const accountMemory = readMemory(session.userId);
+      const accountMenu = readMenu(session.userId, {
+        fallbackToDefault: false,
+        migrateLegacy: false,
+      });
+      const localMemory = mergeMemoryRecords(
+        currentMemory,
+        accountMemory,
+        session.userId
+      );
+      const localMenu = uniq([
+        ...currentMenu,
+        ...accountMenu,
+      ]);
 
       setMemory(localMemory);
       setInsights(buildInsights(localMemory));
       setMyMenu(localMenu);
+      setPhotoUrls({});
+      setMissingPhotoIds([]);
 
       await syncAccountData({
         session,
@@ -1158,7 +1266,11 @@ export default function Home() {
       toast.success("账号已登录，数据已同步");
     } catch (error) {
       console.log(error);
-      toast.error("云同步未完成，请检查 Vercel KV 配置");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "云同步未完成，请检查 Vercel KV 配置"
+      );
     } finally {
       setLoginPasscode("");
       setSyncLoading(false);
@@ -1170,10 +1282,12 @@ export default function Home() {
     setAccountSession(null);
     setLoginPasscode("");
     const uid = getOrCreateUserId();
-    const savedMemory = readMemory();
-    const savedMenu = readMenu();
+    const savedMemory = readMemory(uid);
+    const savedMenu = readMenu(uid);
 
     setUserId(uid);
+    setPhotoUrls({});
+    setMissingPhotoIds([]);
     setMemory(savedMemory);
     setInsights(buildInsights(savedMemory));
     setMyMenu(savedMenu);
@@ -1198,7 +1312,11 @@ export default function Home() {
       toast.success("同步完成");
     } catch (error) {
       console.log(error);
-      toast.error("同步失败，请检查云同步配置");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "同步失败，请检查云同步配置"
+      );
     } finally {
       setSyncLoading(false);
     }
@@ -1250,6 +1368,7 @@ export default function Home() {
 
     setFood(fateResult.food);
     setReason(fateResult.reason);
+    setAcceptedFood("");
     setPage("today");
   };
 
@@ -1260,6 +1379,7 @@ export default function Home() {
   ) => {
     const uid = ensureUser();
     setLoading(true);
+    setAcceptedFood("");
 
     const memorySource =
       currentMemory ?? memory;
@@ -1384,6 +1504,39 @@ export default function Home() {
     imageUrl?: string;
   }) => {
     const uid = ensureUser();
+    const targetFood = acceptedFood || food;
+
+    if (!targetFood) {
+      toast.error("先选一道吃的");
+      return false;
+    }
+
+    const existingIndex = acceptedFood
+      ? memory.findLastIndex(
+          (item) =>
+            item.type === "like" &&
+            item.food === acceptedFood
+        )
+      : -1;
+
+    if (existingIndex >= 0 && photo?.imageId) {
+      const updated = memory.map((item, index) =>
+        index === existingIndex
+          ? {
+              ...item,
+              imageId: photo.imageId,
+              imageUrl: photo.imageUrl,
+            }
+          : item
+      );
+
+      if (saveMemory(updated)) {
+        toast.success("照片已补到饮食日记");
+      }
+
+      return true;
+    }
+
     const updated: MemoryItem[] = [
       ...memory,
       {
@@ -1391,7 +1544,7 @@ export default function Home() {
         userId: uid,
         mood: mood.join("、"),
         style: style.join("、"),
-        food,
+        food: targetFood,
         time: new Date().toISOString(),
         timezone: getCurrentTimezone(),
         timeUnknown: false,
@@ -1408,8 +1561,7 @@ export default function Home() {
     toast.success("今天终于不用纠结了");
     setCandidateFoods([]);
     setFateResult(null);
-    setFood("");
-    setReason("");
+    setAcceptedFood(targetFood);
     return true;
   };
 
@@ -1468,6 +1620,37 @@ export default function Home() {
 
     if (saveMemory(updated)) {
       generateFood(true, updated);
+    }
+  };
+
+  const addManualDiary = () => {
+    const foodName = manualDiaryFood.trim();
+
+    if (!foodName) {
+      toast.error("先写下这顿吃了什么");
+      return;
+    }
+
+    const uid = ensureUser();
+    const updated: MemoryItem[] = [
+      ...memory,
+      {
+        mealTime,
+        userId: uid,
+        mood: manualDiaryNote.trim() || mood.join("、"),
+        style: "自主记录",
+        food: foodName,
+        time: new Date().toISOString(),
+        timezone: getCurrentTimezone(),
+        timeUnknown: false,
+        type: "like",
+      },
+    ];
+
+    if (saveMemory(updated)) {
+      setManualDiaryFood("");
+      setManualDiaryNote("");
+      toast.success("已加入饮食日记");
     }
   };
 
@@ -1578,6 +1761,57 @@ export default function Home() {
     }
 
     void generateCookAI(identifyResult.ingredients);
+  };
+
+  const addManualInspiration = () => {
+    const text = manualInspiration.trim();
+
+    if (!text) {
+      toast.error("先写一点你想到的灵感");
+      return;
+    }
+
+    setInspirations((prev) => [
+      {
+        title: text,
+        desc: "这是你自己想到的方向，可以直接带回今天的选择里。",
+      },
+      ...prev,
+    ]);
+    setManualInspiration("");
+    toast.success("灵感已记下");
+  };
+
+  const addRandomInspiration = () => {
+    const prompts = [
+      {
+        title: "冰箱里先用掉一样东西",
+        desc: "从最容易坏的食材开始想，今天少浪费一点。",
+      },
+      {
+        title: "做一顿 15 分钟能结束的饭",
+        desc: "不追求复杂，热乎、能吃、少洗锅就很好。",
+      },
+      {
+        title: "选一个小时候常吃的味道",
+        desc: "让今天的选择更像生活，不像任务。",
+      },
+      {
+        title: "今天吃点有汤水的",
+        desc: "给身体一点温度，也让这一顿慢下来。",
+      },
+      {
+        title: "找一个酸甜口",
+        desc: "没食欲的时候，酸甜味通常更容易打开胃口。",
+      },
+      {
+        title: "把主食换一种形态",
+        desc: "米饭、面、粉、粥之间换一下，选择会轻很多。",
+      },
+    ];
+    const picked = pickRandom(prompts);
+
+    setInspirations((prev) => [picked, ...prev].slice(0, 12));
   };
 
   const pageTitle =
@@ -1691,7 +1925,7 @@ export default function Home() {
                 现在吃哪顿？
               </p>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="segmented-control">
                 {[
                   "早餐",
                   "午餐",
@@ -1704,9 +1938,10 @@ export default function Home() {
                     onClick={() =>
                       setMealTime(item)
                     }
-                    className={`chip-button ${
+                    aria-pressed={mealTime === item}
+                    className={`segmented-item ${
                       mealTime === item
-                        ? "chip-button-active"
+                        ? "segmented-item-active"
                         : ""
                     }`}
                   >
@@ -1722,7 +1957,7 @@ export default function Home() {
                 现在是什么状态？
               </p>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 {[
                   "奖励自己",
                   "摆烂",
@@ -1737,6 +1972,7 @@ export default function Home() {
                     onClick={() =>
                       toggleValue(item, setMood)
                     }
+                    aria-pressed={mood.includes(item)}
                     className={`chip-button ${
                       mood.includes(item)
                         ? "chip-button-active"
@@ -1755,7 +1991,7 @@ export default function Home() {
                 想吃什么类型？
               </p>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 {[
                   "中餐",
                   "韩餐",
@@ -1769,6 +2005,7 @@ export default function Home() {
                     onClick={() =>
                       toggleValue(item, setStyle)
                     }
+                    aria-pressed={style.includes(item)}
                     className={`chip-button ${
                       style.includes(item)
                         ? "chip-button-active"
@@ -1868,15 +2105,29 @@ export default function Home() {
               </p>
 
               <div className="flex gap-4">
-                <button
-                  onClick={() => acceptFood()}
-                  className="primary-button flex-1 py-3"
-                >
-                  就这个了
-                </button>
+                {!acceptedFood ? (
+                  <button
+                    onClick={() => acceptFood()}
+                    className="primary-button flex-1 py-3"
+                  >
+                    就这个了
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setFood("");
+                      setReason("");
+                      setAcceptedFood("");
+                    }}
+                    className="primary-button flex-1 py-3"
+                  >
+                    完成
+                  </button>
+                )}
 
                 <button
                   onClick={declineFood}
+                  disabled={Boolean(acceptedFood)}
                   className="secondary-button flex-1 py-3"
                 >
                   换一换
@@ -1884,7 +2135,7 @@ export default function Home() {
               </div>
 
               <label className="secondary-button mt-4 block text-center py-3 cursor-pointer">
-                添加照片记录
+                {acceptedFood ? "补传这顿照片" : "带照片确认"}
                 <input
                   type="file"
                   accept="image/*"
@@ -1918,6 +2169,52 @@ export default function Home() {
             >
               {shareLoading ? "生成中" : "导出"}
             </button>
+          </div>
+
+          <div className="surface-card p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">自己记一顿</h3>
+                <p className="text-sm muted-text mt-1">
+                  不用等推荐，想到什么就直接写进日记。
+                </p>
+              </div>
+              <button
+                onClick={() => startVoiceInput("diary")}
+                className="secondary-button px-4 py-2 text-sm"
+              >
+                {voiceTarget === "diary" ? "听你说" : "语音"}
+              </button>
+            </div>
+            <input
+              value={manualDiaryFood}
+              onChange={(event) =>
+                setManualDiaryFood(event.target.value)
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  addManualDiary();
+                }
+              }}
+              placeholder="比如：番茄炒蛋、牛肉面、今天自己煮了粥"
+              className="app-input w-full px-4 py-3"
+            />
+            <div className="flex gap-3">
+              <input
+                value={manualDiaryNote}
+                onChange={(event) =>
+                  setManualDiaryNote(event.target.value)
+                }
+                placeholder="状态备注，可不填"
+                className="app-input min-w-0 flex-1 px-4 py-3"
+              />
+              <button
+                onClick={addManualDiary}
+                className="primary-button px-5 py-3"
+              >
+                记录
+              </button>
+            </div>
           </div>
 
           {memory.filter(
@@ -2281,42 +2578,82 @@ export default function Home() {
       {/* 灵感 */}
       {page === "discover" && (
         <div className="max-w-xl mx-auto px-6 mt-10 space-y-5">
+          <div className="inspiration-board p-6">
+            <p className="text-sm text-gray-400 mb-3">
+              今天先想一个方向
+            </p>
+            <textarea
+              value={manualInspiration}
+              onChange={(event) =>
+                setManualInspiration(event.target.value)
+              }
+              placeholder="比如：想吃有汤水的、想把冰箱鸡蛋用掉、想吃一点酸甜口"
+              className="app-input min-h-28 w-full resize-none px-4 py-3"
+            />
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <button
+                onClick={addManualInspiration}
+                className="primary-button py-3"
+              >
+                记下
+              </button>
+              <button
+                onClick={() => startVoiceInput("inspiration")}
+                className="secondary-button py-3"
+              >
+                {voiceTarget === "inspiration" ? "听你说" : "语音"}
+              </button>
+              <button
+                onClick={addRandomInspiration}
+                className="secondary-button py-3"
+              >
+                翻一张
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={() =>
               void generateInspirations()
             }
             className="primary-button w-full py-4 text-lg"
           >
-            生成今日灵感
+            AI 补满灵感墙
           </button>
 
-          {inspirations.map(
-            (item, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  setMood([item.title]);
+          <div className="grid gap-4">
+            {inspirations.map(
+              (item, index) => (
+                <button
+                  key={`${item.title}-${index}`}
+                  onClick={() => {
+                    setMood((prev) =>
+                      uniq([...prev, item.title]).slice(-4)
+                    );
+                    setPage("today");
+                  }}
+                  className="inspiration-card pressable w-full text-left p-6"
+                >
+                  <span className="inspiration-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <h2 className="text-2xl font-semibold leading-tight mt-4">
+                    {item.title}
+                  </h2>
 
-                  setPage("today");
-                }}
-                className="surface-card pressable w-full text-left p-8"
-              >
-                <h2 className="text-3xl font-semibold leading-tight">
-                  {item.title}
-                </h2>
-
-                <p className="muted-text mt-5 leading-8">
-                  {item.desc}
-                </p>
-              </button>
-            )
-          )}
+                  <p className="muted-text mt-4 leading-8">
+                    {item.desc}
+                  </p>
+                </button>
+              )
+            )}
+          </div>
         </div>
       )}
 
       {/* 底部导航 */}
       <div className="fixed bottom-0 left-0 w-full">
-        <div className="max-w-xl mx-auto px-6 pb-6">
+        <div className="bottom-nav-shell max-w-xl mx-auto px-3 sm:px-6">
           <div className="tab-bar flex justify-around py-4">
             <button
               onClick={() =>

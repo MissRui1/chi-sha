@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { createAiClient, getAiModel } from "@/lib/ai";
 import { runJsonPrompt } from "@/lib/prompt-harness";
+import {
+  curatedDishNames,
+  curatedDrinkNames,
+  isKnownFoodName,
+} from "@/lib/dish-database";
 
 type RecommendationRules = {
   bannedFoods: string[];
@@ -77,6 +82,15 @@ const validateRecommendation = (
   mealTime: string,
   history: string[]
 ) => {
+  const allowedPool =
+    mealTime === "奶茶" ? curatedDrinkNames : curatedDishNames;
+
+  if (!isKnownFoodName(parsed.food, allowedPool)) {
+    throw new Error(
+      `AI returned unknown food: ${parsed.food}`
+    );
+  }
+
   if (mealTime !== "奶茶") {
     const banned = rules.bannedFoods.find(
       (food) =>
@@ -637,6 +651,9 @@ export async function POST(req: Request) {
     );
     const historyText =
       history.join("、") || "暂无";
+    const dishPool =
+      mealTime === "奶茶" ? curatedDrinkNames : curatedDishNames;
+    const dishPoolText = dishPool.join("、");
     const retryText =
       body.retry && body.previousFood
         ? `用户刚刚拒绝了：${body.previousFood}，必须推荐明显不同的食物。`
@@ -651,7 +668,8 @@ export async function POST(req: Request) {
 3. 食物必须现实可获得、名称具体，不输出抽象类别。
 4. 理由 36-90 个中文字符，直接、生活化、无鸡汤、无平台广告感。
 5. 禁止重复已推荐、已拒绝或本次换一换前的食物。
-6. 只返回 JSON，不要 markdown，不要额外字段。
+6. food 必须逐字来自“允许菜品池”，不能自创菜名或输出同一菜的少油/低脂变体。
+7. 只返回 JSON，不要 markdown，不要额外字段。
 
 奶茶专属：
 - mealTime 为“奶茶”时 food 只能是具体茶饮名称。
@@ -671,6 +689,9 @@ ${moodStr}
 
 用户想吃：
 ${styleStr}
+
+允许菜品池：
+${dishPoolText}
 
 ${rules.banReasons ? `当前推荐规则：\n${rules.banReasons}\n` : ""}
 
@@ -692,6 +713,7 @@ ${retryText}
 
 重要约束：
 - 必须严格遵守上述推荐规则。
+- food 必须逐字来自允许菜品池。
 - 禁止列表中的食物绝对不能推荐。
 - 优先推荐列表中的关键词。
 - 不能重复已推荐过的食物。

@@ -41,6 +41,9 @@ type CookResult = z.infer<typeof CookSchema>;
 const normalizeDish = (value: string) =>
   value.replace(/\s/g, "").toLowerCase();
 
+const normalizeText = (value: string) =>
+  value.replace(/\s+/g, "").toLowerCase();
+
 const uniq = (items: string[]) =>
   items
     .map((item) => item.trim())
@@ -207,6 +210,30 @@ ${history.join("、") || "暂无"}
       throwOnFailure: true,
       validate: (value) => {
         if (!hasMenu) {
+          if (availableIngredients.length === 0) {
+            return;
+          }
+
+          const normalizedIngredients =
+            availableIngredients.map(normalizeText);
+          const resultText = [
+            value.dish,
+            value.reason,
+            ...value.ingredients,
+          ]
+            .map(normalizeText)
+            .join("|");
+          const usesDetectedIngredient =
+            normalizedIngredients.some((ingredient) =>
+              resultText.includes(ingredient)
+            );
+
+          if (!usesDetectedIngredient) {
+            throw new Error(
+              `Dish does not use detected ingredients: ${value.dish}`
+            );
+          }
+
           return;
         }
 

@@ -16,6 +16,7 @@ const InspirationRequestSchema = z.object({
   mood: z.string().max(160).optional(),
   mealTime: z.string().max(20).optional(),
   memory: z.array(z.string().max(160)).max(120).optional(),
+  nonce: z.string().max(40).optional(),
 });
 
 const InspirationSchema = z
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
       mood,
       mealTime,
       memory,
+      nonce,
     } = InspirationRequestSchema.parse(await req.json());
     const memoryList = memory ?? [];
     const promptMemory = memoryList.slice(-24);
@@ -86,6 +88,7 @@ export async function POST(req: Request) {
       mood,
       mealTime,
       memoryDigest,
+      nonce,
     });
     const cached = inspirationCache.get(cacheKey);
 

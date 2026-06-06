@@ -1,20 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f5f7;
-  --foreground: #171717;
+  --background: #f4f6f2;
+  --foreground: #20231f;
   --surface: #ffffff;
-  --surface-muted: #f2f2f2;
-  --surface-inset: #f5f5f7;
-  --muted: #6b7280;
-  --soft-muted: #9ca3af;
-  --border: rgba(0, 0, 0, 0.07);
-  --shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
-  --button: #111111;
-  --button-text: #ffffff;
-  --fate-a: #101828;
-  --fate-b: #ef4444;
-  --fate-c: #f59e0b;
+  --surface-muted: #eef1ea;
+  --surface-inset: #f8faf6;
+  --muted: #687063;
+  --soft-muted: #98a08f;
+  --border: rgba(47, 68, 48, 0.11);
+  --shadow: 0 12px 30px rgba(47, 68, 48, 0.08);
+  --button: #263329;
+  --button-text: #f8faf6;
+  --accent: #d8593c;
+  --accent-soft: #e6eee1;
+  --fate-a: #263329;
+  --fate-b: #d8593c;
+  --fate-c: #e3a72f;
 }
 
 @theme inline {
@@ -26,20 +28,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0d0d10;
-    --foreground: #ededed;
-    --surface: #18181b;
-    --surface-muted: #27272a;
-    --surface-inset: #202024;
-    --muted: #a1a1aa;
-    --soft-muted: #71717a;
+    --background: #15130f;
+    --foreground: #f3eee5;
+    --surface: #211f1b;
+    --surface-muted: #2b2822;
+    --surface-inset: #1b1916;
+    --muted: #bbb0a1;
+    --soft-muted: #8c8377;
     --border: rgba(255, 255, 255, 0.1);
     --shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-    --button: #f4f4f5;
-    --button-text: #09090b;
-    --fate-a: #f4f4f5;
-    --fate-b: #fb7185;
-    --fate-c: #fbbf24;
+    --button: #f3eee5;
+    --button-text: #17130f;
+    --accent: #f07855;
+    --accent-soft: #3a2720;
+    --fate-a: #f3eee5;
+    --fate-b: #f07855;
+    --fate-c: #f2bd52;
   }
 }
 
@@ -67,7 +71,7 @@ input:focus-visible {
 
 .app-shell {
   background:
-    radial-gradient(circle at top left, rgba(239, 68, 68, 0.08), transparent 28rem),
+    linear-gradient(180deg, rgba(88, 122, 99, 0.1), transparent 22rem),
     var(--background);
   color: var(--foreground);
 }
@@ -75,7 +79,7 @@ input:focus-visible {
 .surface-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 32px;
+  border-radius: 24px;
   box-shadow: var(--shadow);
 }
 
@@ -99,14 +103,16 @@ input:focus-visible {
 
 .primary-button,
 .secondary-button,
+.segmented-item,
 .chip-button,
 .pressable {
   transition:
-    transform 180ms ease,
-    box-shadow 180ms ease,
-    background 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease;
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  will-change: transform;
 }
 
 .primary-button,
@@ -118,6 +124,7 @@ input:focus-visible {
 .primary-button {
   background: var(--button);
   color: var(--button-text);
+  box-shadow: 0 8px 18px rgba(47, 42, 34, 0.14);
 }
 
 .secondary-button,
@@ -129,26 +136,52 @@ input:focus-visible {
 .primary-button:hover,
 .secondary-button:hover,
 .pressable:hover,
+.segmented-item:hover,
 .chip-button:hover {
-  transform: translateY(-1px);
+  transform: translateY(-1px) translateZ(0);
 }
 
 .primary-button:active,
 .secondary-button:active,
 .pressable:active,
 .chip-button:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.985);
 }
 
 .chip-button {
   border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.5rem 1.25rem;
+  padding: 0.52rem 1rem;
+  contain: layout paint;
 }
 
 .chip-button-active {
   background: var(--button);
   color: var(--button-text);
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-inset);
+}
+
+.segmented-item {
+  min-height: 2.75rem;
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.segmented-item-active {
+  background: var(--button);
+  color: var(--button-text);
+  box-shadow: 0 8px 18px rgba(47, 42, 34, 0.13);
 }
 
 .app-input {
@@ -230,7 +263,7 @@ input:focus-visible {
     linear-gradient(135deg, color-mix(in srgb, var(--fate-a) 92%, transparent), var(--fate-b)),
     var(--surface);
   border: 1px solid color-mix(in srgb, var(--fate-c) 28%, transparent);
-  border-radius: 32px;
+  border-radius: 24px;
   box-shadow: var(--shadow);
   color: #ffffff;
   overflow: hidden;
@@ -275,7 +308,7 @@ input:focus-visible {
 .skeleton-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 32px;
+  border-radius: 24px;
   box-shadow: var(--shadow);
 }
 
@@ -301,6 +334,45 @@ input:focus-visible {
   backdrop-filter: blur(18px);
 }
 
+.bottom-nav-shell {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.inspiration-board,
+.inspiration-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.inspiration-card {
+  position: relative;
+  overflow: hidden;
+  border-left: 4px solid var(--accent);
+}
+
+.inspiration-card:nth-child(2n) {
+  border-left-color: #587a63;
+}
+
+.inspiration-index {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-button,
+  .secondary-button,
+  .segmented-item,
+  .chip-button,
+  .pressable {
+    transition: none;
+  }
+}
+
 .tab-item {
   position: relative;
   display: inline-flex;
@@ -308,10 +380,11 @@ input:focus-visible {
   flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  padding-top: 0.65rem;
+  padding: 0.65rem 0.15rem 0;
   color: var(--soft-muted);
-  font-size: 0.8125rem;
-  transition: color 180ms ease, transform 180ms ease;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  transition: color 120ms ease, transform 120ms ease;
 }
 
 .tab-item-active {
@@ -327,7 +400,7 @@ input:focus-visible {
   background: var(--foreground);
   opacity: 0;
   transform: scale(0.5);
-  transition: opacity 180ms ease, transform 180ms ease;
+  transition: opacity 120ms ease, transform 120ms ease;
 }
 
 .tab-item-active .tab-dot {

@@ -8,7 +8,11 @@ const IdentifyRequestSchema = z
     base64: z.string().max(2_800_000).optional(),
   })
   .refine(
-    (value) => Boolean(value.imageDataUrl ?? value.base64),
+    (value) =>
+      Boolean(
+        value.imageDataUrl?.trim() ||
+          value.base64?.trim()
+      ),
     "imageDataUrl or base64 is required"
   );
 
@@ -63,9 +67,12 @@ const fallbackResult: IdentifyResult = {
 };
 
 const toDataUrl = (body: z.infer<typeof IdentifyRequestSchema>) => {
-  const input = (body.imageDataUrl ?? body.base64 ?? "").trim();
+  const input =
+    (body.imageDataUrl?.trim() ||
+      body.base64?.trim() ||
+      "");
 
-  if (input.startsWith("data:image/")) {
+  if (/^data:image\//i.test(input)) {
     if (
       !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(input)
     ) {
