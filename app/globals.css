@@ -79,12 +79,8 @@ input:focus-visible {
 .surface-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 24px;
   box-shadow: var(--shadow);
-}
-
-.compact-card {
-  padding: 1.25rem;
 }
 
 .inset-card,
@@ -105,62 +101,10 @@ input:focus-visible {
   color: color-mix(in srgb, var(--foreground) 72%, var(--muted));
 }
 
-.app-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.eyebrow-text,
-.section-label {
-  color: var(--soft-muted);
-  font-size: 0.78rem;
-  font-weight: 750;
-  letter-spacing: 0;
-}
-
-.account-button,
-.icon-button,
-.detail-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--foreground);
-  box-shadow: var(--shadow);
-  transition: transform 120ms ease, background-color 120ms ease;
-}
-
-.account-button {
-  min-height: 2.5rem;
-  gap: 0.4rem;
-  border-radius: 999px;
-  padding: 0 0.9rem;
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
-.icon-button {
-  width: 2.8rem;
-  min-width: 2.8rem;
-  height: 2.8rem;
-  border-radius: 14px;
-}
-
-.account-button:hover,
-.icon-button:hover,
-.detail-close:hover {
-  transform: translateY(-1px);
-}
-
 .primary-button,
 .secondary-button,
 .segmented-item,
 .chip-button,
-.account-button,
-.icon-button,
 .pressable {
   transition:
     transform 120ms ease,
@@ -173,7 +117,7 @@ input:focus-visible {
 
 .primary-button,
 .secondary-button {
-  border-radius: 14px;
+  border-radius: 16px;
   font-weight: 600;
 }
 
@@ -207,9 +151,8 @@ input:focus-visible {
 .chip-button {
   border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.48rem 0.86rem;
+  padding: 0.52rem 1rem;
   contain: layout paint;
-  font-size: 0.9rem;
 }
 
 .chip-button-active {
@@ -223,13 +166,13 @@ input:focus-visible {
   gap: 0.35rem;
   padding: 0.35rem;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--surface-inset);
 }
 
 .segmented-item {
-  min-height: 2.55rem;
-  border-radius: 12px;
+  min-height: 2.75rem;
+  border-radius: 14px;
   color: var(--muted);
   font-size: 0.9rem;
   font-weight: 650;
@@ -244,47 +187,10 @@ input:focus-visible {
 .app-input {
   background: var(--surface-inset);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   color: var(--foreground);
   outline: none;
   transition: border-color 160ms ease, background 160ms ease;
-}
-
-.preference-summary,
-.preference-panel {
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface-inset);
-}
-
-.preference-toggle {
-  display: flex;
-  width: 100%;
-  min-height: 3rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 0.95rem;
-  color: var(--foreground);
-  font-size: 0.94rem;
-  font-weight: 650;
-  text-align: left;
-}
-
-.preference-toggle span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preference-panel {
-  padding: 0.95rem;
-}
-
-.custom-row {
-  display: flex;
-  gap: 0.55rem;
 }
 
 .app-input::placeholder {
@@ -352,35 +258,57 @@ input:focus-visible {
   line-height: 1.75rem;
 }
 
-.fate-mini-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.fate-card {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--fate-a) 92%, transparent), var(--fate-b)),
     var(--surface);
   border: 1px solid color-mix(in srgb, var(--fate-c) 28%, transparent);
-  border-radius: 16px;
+  border-radius: 24px;
   box-shadow: var(--shadow);
   color: #ffffff;
-  min-height: 3.2rem;
-  padding: 0 1rem;
-  font-weight: 750;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
-.fate-mini-button:hover {
-  transform: translateY(-1px);
+.fate-card:hover {
+  transform: translateY(-2px);
 }
 
-.fate-mini-button:active {
+.fate-card:active {
   transform: scale(0.99);
+}
+
+.fate-wheel {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from 0deg,
+      #fff 0 16%,
+      var(--fate-c) 16% 32%,
+      #fff 32% 48%,
+      #fb7185 48% 64%,
+      #fff 64% 80%,
+      #38bdf8 80% 100%
+    );
+  border: 5px solid rgba(255, 255, 255, 0.38);
+  box-shadow: inset 0 0 0 8px rgba(0, 0, 0, 0.08);
+}
+
+.fate-wheel span {
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  background: #111111;
+  border: 4px solid #ffffff;
 }
 
 .skeleton-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 24px;
   box-shadow: var(--shadow);
 }
 
@@ -401,7 +329,7 @@ input:focus-visible {
 .tab-bar {
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 28px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
@@ -414,118 +342,8 @@ input:focus-visible {
 .inspiration-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-}
-
-.meal-card {
-  width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  transition: transform 120ms ease, border-color 120ms ease;
-}
-
-.meal-card:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--foreground) 24%, transparent);
-}
-
-.diary-group-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-  color: var(--soft-muted);
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.diary-group-title span {
-  font-weight: 700;
-}
-
-.detail-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgba(18, 20, 16, 0.42);
-  padding: 1rem;
-}
-
-.detail-sheet {
-  position: relative;
-  width: min(100%, 34rem);
-  max-height: min(88vh, 48rem);
-  overflow: auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: 24px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
-}
-
-.detail-close {
-  position: absolute;
-  top: 0.85rem;
-  right: 0.85rem;
-  z-index: 1;
-  width: 2.4rem;
-  height: 2.4rem;
-  border-radius: 999px;
-}
-
-.detail-image {
-  display: block;
-  width: 100%;
-  max-height: 58vh;
-  object-fit: cover;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
-}
-
-.detail-grid div {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-inset);
-  padding: 0.85rem;
-}
-
-.detail-grid span {
-  display: block;
-  color: var(--soft-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-}
-
-.detail-grid strong {
-  display: block;
-  margin-top: 0.35rem;
-  overflow-wrap: anywhere;
-  font-size: 0.9rem;
-}
-
-@media (max-width: 420px) {
-  .compact-card {
-    padding: 1rem;
-  }
-
-  .surface-card {
-    border-radius: 18px;
-  }
-
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
+  box-shadow: var(--shadow);
 }
 
 .inspiration-card {

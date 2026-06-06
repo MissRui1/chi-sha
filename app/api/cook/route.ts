@@ -6,7 +6,7 @@ const CookRequestSchema = z
   .object({
     userId: z.string().optional(),
     mealTime: z.string().max(20).optional(),
-    mood: z.string().max(600).optional(),
+    mood: z.string().max(160).optional(),
     menu: z
       .array(z.string().trim().min(1).max(80))
       .max(120)

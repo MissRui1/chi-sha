@@ -24,8 +24,8 @@ type MemoryPayload =
     };
 
 const StringOrArraySchema = z.union([
-  z.string().max(600),
-  z.array(z.string().max(80)).max(60),
+  z.string().max(160),
+  z.array(z.string().max(80)).max(20),
 ]);
 
 const MemorySchema = z.union([
