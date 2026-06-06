@@ -85,6 +85,27 @@ export async function saveMealPhoto(
   return id;
 }
 
+export async function cacheMealPhoto(
+  id: string,
+  dataUrl: string,
+  userId?: string
+): Promise<boolean> {
+  if (!id || !dataUrl || !canUseIndexedDb()) {
+    return false;
+  }
+
+  const photo: StoredPhoto = {
+    id,
+    dataUrl,
+    createdAt: new Date().toISOString(),
+    userId,
+  };
+
+  await withStore("readwrite", (store) => store.put(photo));
+
+  return true;
+}
+
 export async function readMealPhoto(
   id?: string,
   userId?: string

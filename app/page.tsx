@@ -4,10 +4,21 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type Dispatch,
   type SetStateAction,
 } from "react";
 import { motion } from "framer-motion";
+import {
+  Camera,
+  ChevronDown,
+  ChevronUp,
+  Cloud,
+  LogOut,
+  RefreshCw,
+  UserRound,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image";
 import {
@@ -15,6 +26,7 @@ import {
   normalizeFoodName,
 } from "@/lib/dish-database";
 import {
+  cacheMealPhoto,
   readMealPhoto,
   saveMealPhoto,
 } from "@/lib/photo-store";
@@ -69,9 +81,15 @@ type FateResult = {
   source: string;
 };
 
+type InspirationItem = {
+  title: string;
+  desc: string;
+};
+
 type SyncRecord = {
   memory: unknown[];
   myMenu: string[];
+  photos?: Record<string, string>;
   updatedAt: string;
 };
 
@@ -118,6 +136,36 @@ const defaultMenuDishes = [
 ];
 
 const fateFallbackFoods = curatedDishNames;
+
+const randomInspirationPrompts: InspirationItem[] = [
+  {
+    title: "冰箱里先用掉一样东西",
+    desc: "从最容易坏的食材开始想，今天少浪费一点。",
+  },
+  {
+    title: "做一顿 15 分钟能结束的饭",
+    desc: "不追求复杂，热乎、能吃、少洗锅就很好。",
+  },
+  {
+    title: "选一个小时候常吃的味道",
+    desc: "让今天的选择更像生活，不像任务。",
+  },
+  {
+    title: "今天吃点有汤水的",
+    desc: "给身体一点温度，也让这一顿慢下来。",
+  },
+  {
+    title: "找一个酸甜口",
+    desc: "没食欲的时候，酸甜味通常更容易打开胃口。",
+  },
+  {
+    title: "把主食换一种形态",
+    desc: "米饭、面、粉、粥之间换一下，选择会轻很多。",
+  },
+];
+
+const MAX_SYNC_PHOTOS = 24;
+const MAX_SYNC_PHOTO_CHARS = 2_400_000;
 
 const pickRandom = <T,>(items: T[]) =>
   items[Math.floor(Math.random() * items.length)];
@@ -653,17 +701,68 @@ const getMemoryImageUrl = (
   item.imageUrl ||
   (item.imageId ? photoUrls[item.imageId] : undefined);
 
+const parseSyncPhotos = (
+  photos?: Record<string, string>
+) =>
+  Object.fromEntries(
+    Object.entries(photos ?? {})
+      .filter(
+        ([id, dataUrl]) =>
+          Boolean(id) &&
+          typeof dataUrl === "string" &&
+          dataUrl.startsWith("data:image/")
+      )
+      .slice(-80)
+  );
+
+const cacheSyncedPhotos = (
+  photos: Record<string, string>,
+  targetUserId: string
+) => {
+  void Promise.all(
+    Object.entries(photos).map(([id, dataUrl]) =>
+      cacheMealPhoto(id, dataUrl, targetUserId).catch(() => false)
+    )
+  );
+};
+
+const inspirationKey = (item: InspirationItem) =>
+  `${item.title.trim()}::${item.desc.trim()}`;
+
+const dedupeInspirations = (
+  items: InspirationItem[]
+) => {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const key = inspirationKey(item);
+
+    if (!item.title.trim() || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
+
 const MealCard = ({
   item,
   photoUrls,
+  onSelect,
 }: {
   item: MemoryItem;
   photoUrls: Record<string, string>;
+  onSelect: (item: MemoryItem) => void;
 }) => {
   const imageUrl = getMemoryImageUrl(item, photoUrls);
 
   return (
-    <div className="mb-3 break-inside-avoid surface-card overflow-hidden">
+    <button
+      type="button"
+      onClick={() => onSelect(item)}
+      className="meal-card pressable mb-3 w-full break-inside-avoid overflow-hidden text-left"
+    >
       {imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -684,7 +783,7 @@ const MealCard = ({
           })}
         </p>
       </div>
-    </div>
+    </button>
   );
 };
 
@@ -704,6 +803,9 @@ export default function Home() {
 
   const [accountSession, setAccountSession] =
     useState<StoredAccount | null>(null);
+
+  const [accountPanelOpen, setAccountPanelOpen] =
+    useState(false);
 
   const [loginAccount, setLoginAccount] =
     useState("");
@@ -741,12 +843,7 @@ export default function Home() {
     useState<string[]>(() => buildInsights([]));
 
   const [inspirations, setInspirations] =
-    useState<
-      {
-        title: string;
-        desc: string;
-      }[]
-    >([]);
+    useState<InspirationItem[]>([]);
 
   // 我的菜单
   const [myMenu, setMyMenu] =
@@ -754,6 +851,9 @@ export default function Home() {
 
   const [newDish, setNewDish] =
     useState("");
+
+  const [menuExpanded, setMenuExpanded] =
+    useState(false);
 
   // 做饭 AI
   const [cookResult, setCookResult] =
@@ -798,6 +898,12 @@ export default function Home() {
   const [voiceTarget, setVoiceTarget] =
     useState<"diary" | "inspiration" | null>(null);
 
+  const [selectedMeal, setSelectedMeal] =
+    useState<MemoryItem | null>(null);
+
+  const accountPanelRef = useRef<HTMLDivElement | null>(null);
+  const cookCardRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const savedAccount = getStoredAccount();
@@ -817,6 +923,35 @@ export default function Home() {
 
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!accountPanelOpen) {
+      return;
+    }
+
+    const closeOnOutside = (event: PointerEvent) => {
+      if (
+        accountPanelRef.current &&
+        !accountPanelRef.current.contains(event.target as Node)
+      ) {
+        setAccountPanelOpen(false);
+      }
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountPanelOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountPanelOpen]);
 
   useEffect(() => {
     if (!userId) {
@@ -899,16 +1034,70 @@ export default function Home() {
     return uid;
   }, [userId]);
 
+  const collectMemoryPhotos = useCallback(
+    async (
+      items: MemoryItem[],
+      targetUserId: string
+    ) => {
+      const entries = await Promise.all(
+        items
+          .filter((item) => item.type === "like" && item.imageId)
+          .slice(-MAX_SYNC_PHOTOS)
+          .map(async (item) => {
+            const id = item.imageId;
+
+            if (!id) {
+              return null;
+            }
+
+            const dataUrl =
+              item.imageUrl ??
+              photoUrls[id] ??
+              (await readMealPhoto(id, targetUserId)) ??
+              (await readMealPhoto(id));
+
+            if (!dataUrl) {
+              return null;
+            }
+
+            return [id, dataUrl] as const;
+          })
+      );
+
+      const photos: Record<string, string> = {};
+      let totalChars = 0;
+
+      entries
+        .filter(
+          (entry): entry is readonly [string, string] =>
+            Boolean(entry)
+        )
+        .forEach(([id, dataUrl]) => {
+          if (totalChars + dataUrl.length > MAX_SYNC_PHOTO_CHARS) {
+            return;
+          }
+
+          photos[id] = dataUrl;
+          totalChars += dataUrl.length;
+        });
+
+      return photos;
+    },
+    [photoUrls]
+  );
+
   const syncAccountData = useCallback(
     async ({
       session = accountSession,
       nextMemory = memory,
       nextMenu = myMenu,
+      nextPhotos,
       mode,
     }: {
       session?: StoredAccount | null;
       nextMemory?: MemoryItem[];
       nextMenu?: string[];
+      nextPhotos?: Record<string, string>;
       mode: "pull" | "push" | "merge";
     }) => {
       if (!session) {
@@ -917,6 +1106,11 @@ export default function Home() {
 
       const shouldPullFirst =
         mode === "pull" || mode === "merge";
+      const outgoingPhotos =
+        nextPhotos ??
+        (shouldPullFirst
+          ? undefined
+          : await collectMemoryPhotos(nextMemory, session.userId));
       const response = await fetch("/api/sync", {
         method: "POST",
         headers: {
@@ -928,10 +1122,11 @@ export default function Home() {
           ...(shouldPullFirst
             ? {}
             : {
-                memory: nextMemory,
-                myMenu: nextMenu,
-                updatedAt: new Date().toISOString(),
-              }),
+              memory: nextMemory,
+              myMenu: nextMenu,
+              photos: outgoingPhotos,
+              updatedAt: new Date().toISOString(),
+            }),
         }),
       });
 
@@ -959,6 +1154,7 @@ export default function Home() {
         session.userId
       );
       const remoteMenu = uniq(data.record.myMenu ?? []);
+      const remotePhotos = parseSyncPhotos(data.record.photos);
 
       if (mode === "pull") {
         safeSetLocalStorage(
@@ -973,6 +1169,9 @@ export default function Home() {
         setMemory(remoteMemory);
         setInsights(buildInsights(remoteMemory));
         setMyMenu(remoteMenu.length > 0 ? remoteMenu : defaultMenuDishes);
+        setPhotoUrls(remotePhotos);
+        setMissingPhotoIds([]);
+        cacheSyncedPhotos(remotePhotos, session.userId);
       } else if (mode === "merge") {
         const mergedMemory = mergeMemoryRecords(
           nextMemory,
@@ -980,6 +1179,13 @@ export default function Home() {
           session.userId
         );
         const mergedMenu = uniq([...nextMenu, ...remoteMenu]);
+        const localPhotos =
+          nextPhotos ??
+          (await collectMemoryPhotos(mergedMemory, session.userId));
+        const mergedPhotos = {
+          ...remotePhotos,
+          ...localPhotos,
+        };
 
         safeSetLocalStorage(
           getUserStorageKey(session.userId, "memory"),
@@ -993,8 +1199,11 @@ export default function Home() {
         setMemory(mergedMemory);
         setInsights(buildInsights(mergedMemory));
         setMyMenu(mergedMenu.length > 0 ? mergedMenu : defaultMenuDishes);
+        setPhotoUrls(mergedPhotos);
+        setMissingPhotoIds([]);
+        cacheSyncedPhotos(mergedPhotos, session.userId);
 
-        await fetch("/api/sync", {
+        const saveResponse = await fetch("/api/sync", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1004,15 +1213,20 @@ export default function Home() {
             passcode: session.passcode,
             memory: mergedMemory,
             myMenu: mergedMenu,
+            photos: mergedPhotos,
             updatedAt: new Date().toISOString(),
           }),
         });
+
+        if (!saveResponse.ok) {
+          throw new Error("sync save failed");
+        }
       }
 
       setLastSyncedAt(new Date().toISOString());
       return data.record;
     },
-    [accountSession, memory, myMenu]
+    [accountSession, collectMemoryPhotos, memory, myMenu]
   );
 
   const saveAccountData = useCallback(
@@ -1120,7 +1334,10 @@ export default function Home() {
             item.desc.includes("自己想到")
           );
 
-          return [...manual.slice(0, 3), ...parsed].slice(0, 12);
+          return dedupeInspirations([
+            ...manual.slice(0, 3),
+            ...parsed,
+          ]).slice(0, 12);
         });
       } catch (error) {
         console.log(error);
@@ -1485,6 +1702,12 @@ export default function Home() {
 
         setCookResult(parsed);
         setPage("menu");
+        window.setTimeout(() => {
+          cookCardRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 80);
 
         setCookHistory((prev) => [
           ...prev,
@@ -1672,6 +1895,9 @@ export default function Home() {
                 time: item.time,
                 timezone: item.timezone,
                 timeUnknown: item.timeUnknown,
+                mealTime: item.mealTime,
+                mood: item.mood,
+                style: item.style,
                 imageUrl: storedImage,
               };
             })
@@ -1771,47 +1997,42 @@ export default function Home() {
       return;
     }
 
-    setInspirations((prev) => [
-      {
+    const nextItem = {
         title: text,
         desc: "这是你自己想到的方向，可以直接带回今天的选择里。",
-      },
-      ...prev,
-    ]);
+      };
+
+    if (
+      inspirations.some(
+        (item) => inspirationKey(item) === inspirationKey(nextItem)
+      )
+    ) {
+      toast.error("这条灵感已经在墙上了");
+      return;
+    }
+
+    setInspirations((prev) =>
+      dedupeInspirations([nextItem, ...prev]).slice(0, 12)
+    );
     setManualInspiration("");
     toast.success("灵感已记下");
   };
 
   const addRandomInspiration = () => {
-    const prompts = [
-      {
-        title: "冰箱里先用掉一样东西",
-        desc: "从最容易坏的食材开始想，今天少浪费一点。",
-      },
-      {
-        title: "做一顿 15 分钟能结束的饭",
-        desc: "不追求复杂，热乎、能吃、少洗锅就很好。",
-      },
-      {
-        title: "选一个小时候常吃的味道",
-        desc: "让今天的选择更像生活，不像任务。",
-      },
-      {
-        title: "今天吃点有汤水的",
-        desc: "给身体一点温度，也让这一顿慢下来。",
-      },
-      {
-        title: "找一个酸甜口",
-        desc: "没食欲的时候，酸甜味通常更容易打开胃口。",
-      },
-      {
-        title: "把主食换一种形态",
-        desc: "米饭、面、粉、粥之间换一下，选择会轻很多。",
-      },
-    ];
-    const picked = pickRandom(prompts);
+    const seen = new Set(inspirations.map(inspirationKey));
+    const available = randomInspirationPrompts.filter(
+      (item) => !seen.has(inspirationKey(item))
+    );
+    const picked = pickRandom(available);
 
-    setInspirations((prev) => [picked, ...prev].slice(0, 12));
+    if (!picked) {
+      toast("这组灵感已经翻完了，可以让 AI 补一些新的。");
+      return;
+    }
+
+    setInspirations((prev) =>
+      dedupeInspirations([picked, ...prev]).slice(0, 12)
+    );
   };
 
   const pageTitle =
@@ -1832,86 +2053,146 @@ export default function Home() {
           ? "最近认真吃过的每一顿。"
           : "今天终于不用纠结了。";
 
+  const visibleMenu = menuExpanded
+    ? myMenu
+    : myMenu.slice(0, 6);
+  const hiddenMenuCount = Math.max(
+    myMenu.length - visibleMenu.length,
+    0
+  );
+  const selectedMealImage = selectedMeal
+    ? getMemoryImageUrl(selectedMeal, photoUrls)
+    : undefined;
+
   return (
     <main className="app-shell min-h-screen pb-40">
       {/* 顶部 */}
       <div className="max-w-xl mx-auto px-6 pt-12">
-        <h1 className="text-5xl font-semibold tracking-tight">
-          {pageTitle}
-        </h1>
+        <div className="relative flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-5xl font-semibold tracking-tight">
+              {pageTitle}
+            </h1>
 
-        <p className="muted-text mt-3 leading-7">
-          {pageSubtitle}
-        </p>
+            <p className="muted-text mt-3 leading-7">
+              {pageSubtitle}
+            </p>
+          </div>
 
-        <p className="text-xs text-gray-400 mt-3">
-          {accountSession
-            ? `账号：${accountSession.account}`
-            : `本地用户 ID：${shortUserId(userId)}`}
-        </p>
-
-        <div className="sync-panel mt-5 p-4">
-          {accountSession ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">
-                  已开启账号同步
-                </p>
-                <p className="text-xs muted-text mt-1">
-                  {lastSyncedAt
-                    ? `最近同步：${formatDateTime(lastSyncedAt)}`
-                    : "登录后会同步菜单和饮食日记"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => void manualSync()}
-                  disabled={syncLoading}
-                  className="secondary-button px-4 py-2 text-sm disabled:opacity-40"
-                >
-                  {syncLoading ? "同步中" : "同步"}
-                </button>
-                <button
-                  onClick={logoutAccount}
-                  className="secondary-button px-4 py-2 text-sm"
-                >
-                  退出
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <input
-                value={loginAccount}
-                onChange={(event) =>
-                  setLoginAccount(event.target.value)
-                }
-                placeholder="账号名"
-                className="app-input px-4 py-3 text-sm"
+          <div ref={accountPanelRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() =>
+                setAccountPanelOpen((open) => !open)
+              }
+              aria-label="账号与同步"
+              aria-expanded={accountPanelOpen}
+              className="account-trigger pressable"
+            >
+              {accountSession ? (
+                <Cloud size={20} />
+              ) : (
+                <UserRound size={20} />
+              )}
+              <span
+                className={`account-status-dot ${
+                  accountSession
+                    ? "account-status-dot-on"
+                    : ""
+                }`}
               />
-              <input
-                value={loginPasscode}
-                onChange={(event) =>
-                  setLoginPasscode(event.target.value)
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void loginAndSync();
-                  }
-                }}
-                placeholder="同步口令"
-                type="password"
-                className="app-input px-4 py-3 text-sm"
-              />
-              <button
-                onClick={() => void loginAndSync()}
-                disabled={syncLoading}
-                className="primary-button px-5 py-3 text-sm disabled:opacity-40"
+            </button>
+
+            {accountPanelOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                className="account-popover p-4"
               >
-                {syncLoading ? "同步中" : "登录"}
-              </button>
-            </div>
-          )}
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {accountSession
+                        ? "账号同步"
+                        : "登录同步"}
+                    </p>
+                    <p className="text-xs muted-text mt-1">
+                      {accountSession
+                        ? `账号：${accountSession.account}`
+                        : `本地 ID：${shortUserId(userId)}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAccountPanelOpen(false)}
+                    aria-label="关闭账号面板"
+                    className="icon-button"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {accountSession ? (
+                  <div className="mt-4 space-y-3">
+                    <p className="text-xs muted-text leading-6">
+                      {lastSyncedAt
+                        ? `最近同步：${formatDateTime(lastSyncedAt)}`
+                        : "会同步菜单、饮食日记和日记照片"}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => void manualSync()}
+                        disabled={syncLoading}
+                        className="secondary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
+                      >
+                        <RefreshCw size={15} />
+                        {syncLoading ? "同步中" : "同步"}
+                      </button>
+                      <button
+                        onClick={logoutAccount}
+                        className="secondary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
+                      >
+                        <LogOut size={15} />
+                        退出
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    <input
+                      value={loginAccount}
+                      onChange={(event) =>
+                        setLoginAccount(event.target.value)
+                      }
+                      placeholder="账号名"
+                      className="app-input w-full px-4 py-3 text-sm"
+                    />
+                    <input
+                      value={loginPasscode}
+                      onChange={(event) =>
+                        setLoginPasscode(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          void loginAndSync();
+                        }
+                      }}
+                      placeholder="同步口令"
+                      type="password"
+                      className="app-input w-full px-4 py-3 text-sm"
+                    />
+                    <button
+                      onClick={() => void loginAndSync()}
+                      disabled={syncLoading}
+                      className="primary-button w-full px-5 py-3 text-sm disabled:opacity-40"
+                    >
+                      {syncLoading ? "同步中" : "登录并同步"}
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2238,6 +2519,7 @@ export default function Home() {
                       key={`${item.food}-${item.time}`}
                       item={item}
                       photoUrls={photoUrls}
+                      onSelect={setSelectedMeal}
                     />
                   ))}
                 </div>
@@ -2270,7 +2552,7 @@ export default function Home() {
       {page === "menu" && (
         <div className="max-w-xl mx-auto px-6 mt-10 space-y-6">
           {/* AI 推荐 */}
-          <div className="surface-card p-8">
+          <div ref={cookCardRef} className="surface-card p-8 scroll-mt-6">
             <p className="text-sm text-gray-400 mb-4">
               今晚做什么
             </p>
@@ -2377,97 +2659,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 我的菜 */}
-          <div className="surface-card p-8">
-            <p className="text-sm text-gray-400 mb-5">
-              我的菜
-            </p>
-
-            <div className="mb-6">
-              <p className="text-sm text-gray-400 mb-3">
-                家常菜快捷添加
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {defaultMenuDishes.map((dish) => (
-                  <button
-                    key={dish}
-                    onClick={() => {
-                      if (myMenu.includes(dish)) {
-                        toast.error("这道菜已经在菜单里了");
-                        return;
-                      }
-
-                      if (saveMenu([...myMenu, dish])) {
-                        toast.success("已加入我的菜单");
-                      }
-                    }}
-                    disabled={myMenu.includes(dish)}
-                    className="quick-dish-button disabled:opacity-35"
-                  >
-                    {dish}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3 mb-6">
-              <input
-                value={newDish}
-                onChange={(e) =>
-                  setNewDish(
-                    e.target.value
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    addDish();
-                  }
-                }}
-                placeholder="输入一道你会做的菜"
-                className="app-input flex-1 px-5 py-4"
-              />
-
-              <button
-                onClick={addDish}
-                className="primary-button px-5"
-              >
-                添加
-              </button>
-            </div>
-
-            {myMenu.length === 0 ? (
-              <div className="empty-state p-6">
-                <h3 className="font-semibold">
-                  菜单还是空的
-                </h3>
-                <p className="muted-text mt-2 leading-7">
-                  先加几道常做的菜，AI 才能帮你从家常选项里做决定。
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {myMenu.map((dish) => (
-                  <motion.div
-                    key={dish}
-                    layout
-                    className="menu-row px-5 py-4 flex justify-between items-center"
-                  >
-                    <span>{dish}</span>
-
-                    <button
-                      onClick={() =>
-                        deleteDish(dish)
-                      }
-                      className="delete-button"
-                    >
-                      删除
-                    </button>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
-
           <div className="surface-card p-8">
             <h2 className="text-3xl font-semibold leading-tight">
               拍照识材
@@ -2476,7 +2667,8 @@ export default function Home() {
               拍一下冰箱、案板或剩余食材，先识别能用的食材，再生成适合清库存的家常菜。
             </p>
 
-            <label className="primary-button mt-6 block text-center py-4 cursor-pointer">
+            <label className="primary-button mt-6 flex cursor-pointer items-center justify-center gap-2 py-4 text-center">
+              <Camera size={19} />
               拍照清理冰箱食材
               <input
                 type="file"
@@ -2572,6 +2764,118 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {/* 我的菜 */}
+          <div className="surface-card p-8">
+            <p className="text-sm text-gray-400 mb-5">
+              我的菜
+            </p>
+
+            <div className="mb-6">
+              <p className="text-sm text-gray-400 mb-3">
+                家常菜快捷添加
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {defaultMenuDishes.map((dish) => (
+                  <button
+                    key={dish}
+                    onClick={() => {
+                      if (myMenu.includes(dish)) {
+                        toast.error("这道菜已经在菜单里了");
+                        return;
+                      }
+
+                      if (saveMenu([...myMenu, dish])) {
+                        toast.success("已加入我的菜单");
+                      }
+                    }}
+                    disabled={myMenu.includes(dish)}
+                    className="quick-dish-button disabled:opacity-35"
+                  >
+                    {dish}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 mb-6">
+              <input
+                value={newDish}
+                onChange={(e) =>
+                  setNewDish(
+                    e.target.value
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    addDish();
+                  }
+                }}
+                placeholder="输入一道你会做的菜"
+                className="app-input flex-1 px-5 py-4"
+              />
+
+              <button
+                onClick={addDish}
+                className="primary-button px-5"
+              >
+                添加
+              </button>
+            </div>
+
+            {myMenu.length === 0 ? (
+              <div className="empty-state p-6">
+                <h3 className="font-semibold">
+                  菜单还是空的
+                </h3>
+                <p className="muted-text mt-2 leading-7">
+                  先加几道常做的菜，AI 才能帮你从家常选项里做决定。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {visibleMenu.map((dish) => (
+                  <motion.div
+                    key={dish}
+                    layout
+                    className="menu-row px-5 py-4 flex justify-between items-center"
+                  >
+                    <span>{dish}</span>
+
+                    <button
+                      onClick={() =>
+                        deleteDish(dish)
+                      }
+                      className="delete-button"
+                    >
+                      删除
+                    </button>
+                  </motion.div>
+                ))}
+
+                {myMenu.length > 6 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMenuExpanded((expanded) => !expanded)
+                    }
+                    className="secondary-button flex w-full items-center justify-center gap-2 py-3 text-sm"
+                  >
+                    {menuExpanded ? (
+                      <>
+                        收起菜单 <ChevronUp size={16} />
+                      </>
+                    ) : (
+                      <>
+                        展开剩余 {hiddenMenuCount} 道
+                        <ChevronDown size={16} />
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2648,6 +2952,75 @@ export default function Home() {
               )
             )}
           </div>
+        </div>
+      )}
+
+      {selectedMeal && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="饮食记录详情"
+          onClick={() => setSelectedMeal(null)}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="meal-detail-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 p-5">
+              <div>
+                <p className="text-sm text-gray-400">
+                  饮食记录详情
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold leading-tight">
+                  {selectedMeal.food}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedMeal(null)}
+                aria-label="关闭详情"
+                className="icon-button"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {selectedMealImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={selectedMealImage}
+                alt={selectedMeal.food}
+                className="max-h-[52vh] w-full object-cover"
+              />
+            )}
+
+            <div className="grid gap-3 p-5">
+              <div className="detail-row">
+                <span>时间</span>
+                <strong>
+                  {formatDateTime(selectedMeal.time, {
+                    timezone: selectedMeal.timezone,
+                    timeUnknown: selectedMeal.timeUnknown,
+                  })}
+                </strong>
+              </div>
+              <div className="detail-row">
+                <span>餐段</span>
+                <strong>{selectedMeal.mealTime || "未记录"}</strong>
+              </div>
+              <div className="detail-row">
+                <span>状态</span>
+                <strong>{selectedMeal.mood || "未记录"}</strong>
+              </div>
+              <div className="detail-row">
+                <span>类型</span>
+                <strong>{selectedMeal.style || "未记录"}</strong>
+              </div>
+            </div>
+          </motion.div>
         </div>
       )}
 

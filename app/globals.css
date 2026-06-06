@@ -87,7 +87,8 @@ input:focus-visible {
 .menu-row,
 .empty-state,
 .recipe-suggestion,
-.sync-panel {
+.sync-panel,
+.meal-card {
   background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -211,6 +212,59 @@ input:focus-visible {
   transform: translateY(-1px);
 }
 
+.icon-button,
+.account-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: var(--shadow);
+}
+
+.icon-button {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.account-trigger {
+  position: relative;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+}
+
+.account-status-dot {
+  position: absolute;
+  right: 0.46rem;
+  bottom: 0.48rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--soft-muted);
+  border: 2px solid var(--surface);
+}
+
+.account-status-dot-on {
+  background: #34a853;
+}
+
+.account-popover {
+  position: absolute;
+  right: 0;
+  top: 3.7rem;
+  z-index: 40;
+  width: min(20rem, calc(100vw - 3rem));
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 22px 60px rgba(47, 68, 48, 0.18);
+  backdrop-filter: blur(18px);
+}
+
 .quick-dish-button,
 .recipe-chip {
   background: var(--surface-inset);
@@ -231,6 +285,59 @@ input:focus-visible {
 .quick-dish-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
   transform: translateY(-1px);
+}
+
+.meal-card {
+  box-shadow: var(--shadow);
+}
+
+.meal-card img {
+  aspect-ratio: 1.05;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 18, 14, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.meal-detail-panel {
+  width: min(100%, 34rem);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-inset);
+}
+
+.detail-row span {
+  color: var(--soft-muted);
+  font-size: 0.82rem;
+}
+
+.detail-row strong {
+  min-width: 0;
+  text-align: right;
+  font-size: 0.92rem;
+  line-height: 1.55;
 }
 
 .recipe-step {
