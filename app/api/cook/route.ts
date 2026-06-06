@@ -1,10 +1,4 @@
-import OpenAI from "openai";
-
-const client = new OpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY,
-  baseURL:
-    "https://dashscope.aliyuncs.com/compatible-mode/v1",
-});
+import { createAiClient, getAiModel } from "@/lib/ai";
 
 export async function POST(req: Request) {
   try {
@@ -130,10 +124,11 @@ ${menu.join("、")}
 最近做过：
 ${history.join("、")}
 `;
+    const client = createAiClient();
 
     const completion =
       await client.chat.completions.create({
-        model: "qwen-plus",
+        model: getAiModel(),
 
         messages: [
           {

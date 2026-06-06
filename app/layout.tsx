@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Toaster } from "sonner";
 
 export const metadata = {
   title: "吃啥？",
@@ -12,7 +13,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Toaster richColors position="top-center" />
+      </body>
     </html>
   );
 }
