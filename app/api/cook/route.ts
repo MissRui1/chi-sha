@@ -5,15 +5,16 @@ import { runJsonPrompt } from "@/lib/prompt-harness";
 const CookRequestSchema = z
   .object({
     userId: z.string().optional(),
-    mealTime: z.string().optional(),
-    mood: z.string().optional(),
+    mealTime: z.string().max(20).optional(),
+    mood: z.string().max(160).optional(),
     menu: z
-      .array(z.string().trim().min(1))
+      .array(z.string().trim().min(1).max(80))
+      .max(120)
       .optional()
       .default([]),
-    history: z.array(z.string()).optional(),
+    history: z.array(z.string().max(80)).max(120).optional(),
     availableIngredients: z
-      .array(z.string().trim().min(1))
+      .array(z.string().trim().min(1).max(40))
       .max(12)
       .optional()
       .default([]),
@@ -84,8 +85,24 @@ const fallbackCook = (
 const formatTime = (
   currentTime?: string,
   timezone = "Asia/Shanghai"
-) =>
-  new Intl.DateTimeFormat("zh-CN", {
+) => {
+  const date = currentTime ? new Date(currentTime) : new Date();
+
+  if (Number.isNaN(date.getTime())) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(new Date());
+  }
+
+  try {
+    return new Intl.DateTimeFormat("zh-CN", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
@@ -94,7 +111,20 @@ const formatTime = (
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(currentTime ? new Date(currentTime) : new Date());
+    }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(date);
+  }
+};
 
 export async function POST(req: Request) {
   let fallback: CookResult | null = null;
@@ -107,11 +137,15 @@ export async function POST(req: Request) {
     const history = body.history ?? [];
     const availableIngredients =
       body.availableIngredients ?? [];
-    fallback = fallbackCook(menu, availableIngredients);
+    const isIngredientMode = availableIngredients.length > 0;
+    const hasMenu = menu.length > 0 && !isIngredientMode;
+    fallback = fallbackCook(
+      isIngredientMode ? [] : menu,
+      availableIngredients
+    );
     const menuText = menu
       .map((item, index) => `${index + 1}. ${item}`)
       .join("\n") || "暂无";
-    const hasMenu = menu.length > 0;
 
     const systemPrompt = `
 你是“做啥”的家常菜决策和简明菜谱引擎。
@@ -119,9 +153,9 @@ export async function POST(req: Request) {
 硬性规则：
 ${hasMenu
   ? "1. dish 必须逐字来自用户菜单，不能创造菜单外的菜名。"
-  : "1. 用户菜单为空时，dish 必须是用当前识别到的食材能现实做出的中国家常菜。"}
+  : "1. dish 必须是能用当前识别到的食材现实做出的中国家常菜，适合清理冰箱或处理剩余食材。"}
 2. 如果历史里出现过某菜，除非可选项太少，否则优先避开。
-3. 如果提供了“当前识别到的食材”，优先选择最能用上这些食材、且做起来现实的一道菜。
+3. 如果提供了“当前识别到的食材”，优先选择最能用上这些食材、且不需要额外买很多东西的一道菜。
 4. 根据真实时间、餐次和用户状态选择最合适、最不折腾的一道菜。
 5. reason 只写 1 句，36-80 个中文字符，直接说明为什么现在适合做它。
 6. ingredients 写 3-8 项常见食材/调料，尽量包含识别到的食材，不要写克数，不要写稀有材料。
@@ -170,6 +204,7 @@ ${history.join("、") || "暂无"}
       fallback,
       temperature: 0.55,
       maxAttempts: 3,
+      throwOnFailure: true,
       validate: (value) => {
         if (!hasMenu) {
           return;
@@ -194,17 +229,21 @@ ${history.join("、") || "暂无"}
   } catch (error) {
     console.log(error);
 
-    return Response.json({
-      result: JSON.stringify(
-        fallback ?? {
-          dish: "",
-          reason:
-            "菜单为空，暂时无法从你的菜单里决定要做什么。",
-          ingredients: [],
-          steps: [],
-          tips: "先添加一道你会做的菜。",
-        }
-      ),
-    });
+    return Response.json(
+      {
+        ok: false,
+        result: JSON.stringify(
+          fallback ?? {
+            dish: "",
+            reason:
+              "菜单为空，暂时无法从你的菜单里决定要做什么。",
+            ingredients: [],
+            steps: [],
+            tips: "先添加一道你会做的菜。",
+          }
+        ),
+      },
+      { status: 503 }
+    );
   }
 }

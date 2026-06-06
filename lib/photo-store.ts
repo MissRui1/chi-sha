@@ -6,6 +6,7 @@ type StoredPhoto = {
   id: string;
   dataUrl: string;
   createdAt: string;
+  userId?: string;
 };
 
 const canUseIndexedDb = () =>
@@ -60,21 +61,23 @@ const withStore = async <T>(
   });
 };
 
-export const createMealPhotoId = () =>
-  `meal_photo_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+export const createMealPhotoId = (userId = "anon") =>
+  `meal_photo_${encodeURIComponent(userId)}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 export async function saveMealPhoto(
-  dataUrl: string
+  dataUrl: string,
+  userId?: string
 ): Promise<string | null> {
   if (!canUseIndexedDb()) {
     return null;
   }
 
-  const id = createMealPhotoId();
+  const id = createMealPhotoId(userId);
   const photo: StoredPhoto = {
     id,
     dataUrl,
     createdAt: new Date().toISOString(),
+    userId,
   };
 
   await withStore("readwrite", (store) => store.put(photo));
@@ -83,7 +86,8 @@ export async function saveMealPhoto(
 }
 
 export async function readMealPhoto(
-  id?: string
+  id?: string,
+  userId?: string
 ): Promise<string | undefined> {
   if (!id || !canUseIndexedDb()) {
     return undefined;
@@ -94,5 +98,13 @@ export async function readMealPhoto(
     (store) => store.get(id)
   );
 
-  return photo?.dataUrl;
+  if (!photo) {
+    return undefined;
+  }
+
+  if (userId && photo.userId && photo.userId !== userId) {
+    return undefined;
+  }
+
+  return photo.dataUrl;
 }

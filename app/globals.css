@@ -82,7 +82,8 @@ input:focus-visible {
 .inset-card,
 .menu-row,
 .empty-state,
-.recipe-suggestion {
+.recipe-suggestion,
+.sync-panel {
   background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -303,12 +304,13 @@ input:focus-visible {
 .tab-item {
   position: relative;
   display: inline-flex;
-  min-width: 4.5rem;
+  min-width: 0;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   padding-top: 0.65rem;
   color: var(--soft-muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   transition: color 180ms ease, transform 180ms ease;
 }
 

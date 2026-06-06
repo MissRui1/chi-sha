@@ -19,8 +19,13 @@ import {
   shareMealWall,
 } from "@/lib/share";
 import {
+  clearStoredAccount,
   getOrCreateUserId,
+  getStoredAccount,
   getUserStorageKey,
+  normalizeAccountName,
+  setStoredAccount,
+  type StoredAccount,
 } from "@/lib/user";
 
 type MemoryItem = {
@@ -60,6 +65,12 @@ type FateResult = {
   source: string;
 };
 
+type SyncRecord = {
+  memory: unknown[];
+  myMenu: string[];
+  updatedAt: string;
+};
+
 const defaultMenuDishes = [
   "番茄炒蛋",
   "青椒土豆丝",
@@ -82,6 +93,46 @@ const fateFallbackFoods = [
   "越南牛肉粉",
   "虾仁滑蛋饭",
   "菌菇鸡汤面",
+  "牛肉河粉",
+  "卤肉饭",
+  "黄焖鸡米饭",
+  "三鲜馄饨",
+  "葱油拌面",
+  "重庆小面",
+  "广式烧鸭饭",
+  "海南鸡饭",
+  "砂锅米线",
+  "铁板牛柳饭",
+  "羊肉泡馍",
+  "肠粉",
+  "鸡蛋灌饼",
+  "水饺",
+  "牛肉拉面",
+  "香菇滑鸡饭",
+  "椒麻鸡",
+  "石锅拌饭",
+  "寿司拼盘",
+  "泰式冬阴功汤",
+  "墨西哥卷饼",
+  "意面",
+  "烤鱼",
+  "冒菜",
+  "小笼包",
+  "生煎包",
+  "牛肉汉堡",
+  "鸡肉卷",
+  "鳗鱼饭",
+  "咖喱牛腩饭",
+  "蒸蛋配米饭",
+  "皮蛋瘦肉粥",
+  "凉皮",
+  "麻酱拌面",
+  "锅包肉",
+  "干锅花菜",
+  "粉蒸肉",
+  "白切鸡",
+  "莲藕排骨汤",
+  "酸辣土豆丝",
 ];
 
 const pickRandom = <T,>(items: T[]) =>
@@ -94,6 +145,165 @@ const uniq = (items: string[]) =>
       (item, index, arr) =>
         item && arr.indexOf(item) === index
     );
+
+const normalizeDishName = (value: string) =>
+  value.replace(/\s+/g, "").toLowerCase();
+
+const mergeMemoryRecords = (
+  current: MemoryItem[],
+  incoming: MemoryItem[],
+  fallbackUserId: string
+) => {
+  const merged = [...current, ...incoming].map((item) => ({
+    ...item,
+    userId: item.userId || fallbackUserId,
+  }));
+  const seen = new Set<string>();
+
+  return merged.filter((item) => {
+    const key = `${item.type}:${item.food}:${item.time}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
+
+const parseSyncMemory = (
+  items: unknown[],
+  fallbackUserId: string
+) =>
+  items
+    .map((item) =>
+      typeof item === "string" ||
+      (typeof item === "object" && item !== null)
+        ? parseMemoryRecord(
+            item as string | Partial<MemoryItem>,
+            fallbackUserId
+          )
+        : null
+    )
+    .filter((item): item is MemoryItem => Boolean(item?.food));
+
+const normalizeIdentifyResult = (
+  value: unknown
+): IdentifyResult => {
+  const raw = (value ?? {}) as Partial<IdentifyResult>;
+  const ingredients = Array.isArray(raw.ingredients)
+    ? uniq(
+        raw.ingredients.filter(
+          (item): item is string =>
+            typeof item === "string"
+        )
+      ).slice(0, 8)
+    : [];
+  const cookableDishes = Array.isArray(raw.cookableDishes)
+    ? raw.cookableDishes
+        .filter(
+          (item): item is CookResult =>
+            Boolean(
+              item &&
+                typeof item.dish === "string" &&
+                Array.isArray(item.ingredients) &&
+                Array.isArray(item.steps)
+            )
+        )
+        .slice(0, 3)
+    : [];
+  const kind =
+    raw.kind === "dish" ||
+    raw.kind === "ingredient" ||
+    raw.kind === "non_food"
+      ? raw.kind
+      : ingredients.length > 0
+        ? "ingredient"
+        : "non_food";
+
+  return {
+    kind,
+    isDish: kind === "dish",
+    dish:
+      typeof raw.dish === "string" && raw.dish.trim()
+        ? raw.dish.trim()
+        : kind === "ingredient"
+          ? "识别到食材"
+          : "未识别食材",
+    suggestion:
+      typeof raw.suggestion === "string" &&
+      raw.suggestion.trim()
+        ? raw.suggestion.trim()
+        : kind === "ingredient"
+          ? "可以根据这些食材生成一道顺手的家常菜。"
+          : "这张图里的食材不够明确，可以换一张更清晰的照片。",
+    ingredients,
+    cookableDishes,
+  };
+};
+
+const selectWeightedFood = ({
+  recentFoods,
+  menuFoods,
+  blockedFoods,
+}: {
+  recentFoods: string[];
+  menuFoods: string[];
+  blockedFoods: string[];
+}) => {
+  const blocked = new Set(blockedFoods.map(normalizeDishName));
+  const recentUnique = uniq(recentFoods).filter(
+    (food) => !blocked.has(normalizeDishName(food))
+  );
+  const menuUnique = uniq(menuFoods).filter(
+    (food) => !blocked.has(normalizeDishName(food))
+  );
+  const fallbackUnique = uniq(fateFallbackFoods).filter(
+    (food) => !blocked.has(normalizeDishName(food))
+  );
+  const menuWeight = Math.min(
+    0.68,
+    0.16 + menuUnique.length * 0.045
+  );
+  const recentWeight = Math.min(
+    0.22,
+    0.08 + recentUnique.length * 0.015
+  );
+  const sources = [
+    {
+      items: menuUnique,
+      label: "从你的菜单抽中",
+      weight: menuUnique.length ? menuWeight : 0,
+    },
+    {
+      items: recentUnique,
+      label: "从你的饮食日记抽中",
+      weight: recentUnique.length ? recentWeight : 0,
+    },
+    {
+      items: fallbackUnique,
+      label: "从扩展菜品池抽中",
+      weight: fallbackUnique.length ? 1 : 0,
+    },
+  ];
+  const totalWeight = sources.reduce(
+    (sum, source) => sum + source.weight,
+    0
+  );
+  let cursor = Math.random() * totalWeight;
+  const source =
+    sources.find((item) => {
+      cursor -= item.weight;
+      return cursor <= 0;
+    }) ?? sources[sources.length - 1];
+  const picked = pickRandom(source.items) ?? pickRandom(fallbackUnique);
+
+  return {
+    food: picked,
+    source: source.label,
+  };
+};
 
 const getClientContext = () => ({
   currentTime: new Date().toISOString(),
@@ -497,6 +707,21 @@ export default function Home() {
 
   const [userId, setUserId] = useState("");
 
+  const [accountSession, setAccountSession] =
+    useState<StoredAccount | null>(null);
+
+  const [loginAccount, setLoginAccount] =
+    useState("");
+
+  const [loginPasscode, setLoginPasscode] =
+    useState("");
+
+  const [syncLoading, setSyncLoading] =
+    useState(false);
+
+  const [lastSyncedAt, setLastSyncedAt] =
+    useState("");
+
   const [food, setFood] = useState("");
 
   const [reason, setReason] =
@@ -511,6 +736,9 @@ export default function Home() {
   const [photoUrls, setPhotoUrls] = useState<
     Record<string, string>
   >({});
+
+  const [missingPhotoIds, setMissingPhotoIds] =
+    useState<string[]>([]);
 
   const [insights, setInsights] =
     useState<string[]>(() => buildInsights([]));
@@ -558,12 +786,18 @@ export default function Home() {
   const [fateResult, setFateResult] =
     useState<FateResult | null>(null);
 
+  const [candidateFoods, setCandidateFoods] =
+    useState<string[]>([]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const uid = getOrCreateUserId();
+      const savedAccount = getStoredAccount();
+      const uid = savedAccount?.userId || getOrCreateUserId();
       const savedMemory = readMemory();
       const savedMenu = readMenu();
 
+      setAccountSession(savedAccount);
+      setLoginAccount(savedAccount?.account ?? "");
       setUserId(uid);
       setMemory(savedMemory);
       setInsights(buildInsights(savedMemory));
@@ -574,12 +808,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const knownMissing = new Set(missingPhotoIds);
     const missingIds = memory
       .map((item) => item.imageId)
       .filter(
         (id): id is string => Boolean(id)
       )
-      .filter((id) => !photoUrls[id]);
+      .filter(
+        (id) => !photoUrls[id] && !knownMissing.has(id)
+      );
 
     if (missingIds.length === 0) {
       return;
@@ -589,7 +826,7 @@ export default function Home() {
 
     void Promise.all(
       missingIds.map(async (id) => {
-        const dataUrl = await readMealPhoto(id);
+        const dataUrl = await readMealPhoto(id, userId);
         return [id, dataUrl] as const;
       })
     ).then((entries) => {
@@ -599,12 +836,21 @@ export default function Home() {
 
       setPhotoUrls((prev) => {
         const next = { ...prev };
+        const notFound: string[] = [];
 
         entries.forEach(([id, dataUrl]) => {
           if (dataUrl) {
             next[id] = dataUrl;
+          } else {
+            notFound.push(id);
           }
         });
+
+        if (notFound.length > 0) {
+          setMissingPhotoIds((prevMissing) =>
+            uniq([...prevMissing, ...notFound])
+          );
+        }
 
         return next;
       });
@@ -613,7 +859,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [memory, photoUrls]);
+  }, [memory, missingPhotoIds, photoUrls, userId]);
 
   const toggleValue = (
     value: string,
@@ -637,6 +883,118 @@ export default function Home() {
 
     return uid;
   }, [userId]);
+
+  const syncAccountData = useCallback(
+    async ({
+      session = accountSession,
+      nextMemory = memory,
+      nextMenu = myMenu,
+      mode,
+    }: {
+      session?: StoredAccount | null;
+      nextMemory?: MemoryItem[];
+      nextMenu?: string[];
+      mode: "pull" | "push" | "merge";
+    }) => {
+      if (!session) {
+        return null;
+      }
+
+      const shouldPullFirst =
+        mode === "pull" || mode === "merge";
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          account: session.account,
+          passcode: session.passcode,
+          ...(shouldPullFirst
+            ? {}
+            : {
+                memory: nextMemory,
+                myMenu: nextMenu,
+                updatedAt: new Date().toISOString(),
+              }),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("sync unavailable");
+      }
+
+      const data = (await response.json()) as {
+        ok: boolean;
+        record?: SyncRecord;
+      };
+
+      if (!data.ok || !data.record) {
+        throw new Error("sync failed");
+      }
+
+      const remoteMemory = parseSyncMemory(
+        data.record.memory ?? [],
+        session.userId
+      );
+      const remoteMenu = uniq(data.record.myMenu ?? []);
+
+      if (mode === "pull") {
+        setMemory(remoteMemory);
+        setInsights(buildInsights(remoteMemory));
+        setMyMenu(remoteMenu.length > 0 ? remoteMenu : defaultMenuDishes);
+      } else if (mode === "merge") {
+        const mergedMemory = mergeMemoryRecords(
+          nextMemory,
+          remoteMemory,
+          session.userId
+        );
+        const mergedMenu = uniq([...nextMenu, ...remoteMenu]);
+
+        setMemory(mergedMemory);
+        setInsights(buildInsights(mergedMemory));
+        setMyMenu(mergedMenu.length > 0 ? mergedMenu : defaultMenuDishes);
+
+        await fetch("/api/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            account: session.account,
+            passcode: session.passcode,
+            memory: mergedMemory,
+            myMenu: mergedMenu,
+            updatedAt: new Date().toISOString(),
+          }),
+        });
+      }
+
+      setLastSyncedAt(new Date().toISOString());
+      return data.record;
+    },
+    [accountSession, memory, myMenu]
+  );
+
+  const saveAccountData = useCallback(
+    (nextMemory: MemoryItem[], nextMenu: string[]) => {
+      const session = accountSession;
+
+      if (!session) {
+        return;
+      }
+
+      void syncAccountData({
+        session,
+        nextMemory,
+        nextMenu,
+        mode: "push",
+      }).catch((error) => {
+        console.log("Background sync failed:", error);
+      });
+    },
+    [accountSession, syncAccountData]
+  );
 
   // 灵感 AI
   const generateInspirations =
@@ -663,6 +1021,10 @@ export default function Home() {
               }),
             }
           );
+
+        if (!response.ok) {
+          throw new Error("inspiration api failed");
+        }
 
         const data =
           await response.json();
@@ -699,6 +1061,7 @@ export default function Home() {
     setMemory(normalized);
 
     setInsights(buildInsights(normalized));
+    saveAccountData(normalized, myMenu);
     return true;
   };
 
@@ -720,6 +1083,7 @@ export default function Home() {
     }
 
     setMyMenu(normalized);
+    saveAccountData(memory, normalized);
     return true;
   };
 
@@ -758,6 +1122,88 @@ export default function Home() {
     }
   };
 
+  const loginAndSync = async () => {
+    const account = normalizeAccountName(loginAccount);
+
+    if (!account || loginPasscode.length < 4) {
+      toast.error("请输入账号和至少 4 位同步口令");
+      return;
+    }
+
+    const session = setStoredAccount(account, loginPasscode);
+
+    if (!session) {
+      toast.error("账号信息不完整");
+      return;
+    }
+
+    setSyncLoading(true);
+
+    try {
+      setAccountSession(session);
+      setUserId(session.userId);
+      const localMemory = readMemory();
+      const localMenu = readMenu();
+
+      setMemory(localMemory);
+      setInsights(buildInsights(localMemory));
+      setMyMenu(localMenu);
+
+      await syncAccountData({
+        session,
+        nextMemory: localMemory,
+        nextMenu: localMenu,
+        mode: "merge",
+      });
+      toast.success("账号已登录，数据已同步");
+    } catch (error) {
+      console.log(error);
+      toast.error("云同步未完成，请检查 Vercel KV 配置");
+    } finally {
+      setLoginPasscode("");
+      setSyncLoading(false);
+    }
+  };
+
+  const logoutAccount = () => {
+    clearStoredAccount();
+    setAccountSession(null);
+    setLoginPasscode("");
+    const uid = getOrCreateUserId();
+    const savedMemory = readMemory();
+    const savedMenu = readMenu();
+
+    setUserId(uid);
+    setMemory(savedMemory);
+    setInsights(buildInsights(savedMemory));
+    setMyMenu(savedMenu);
+    toast.success("已退出账号，当前使用本地记录");
+  };
+
+  const manualSync = async () => {
+    if (!accountSession) {
+      toast.error("先登录账号再同步");
+      return;
+    }
+
+    setSyncLoading(true);
+
+    try {
+      await syncAccountData({
+        session: accountSession,
+        nextMemory: memory,
+        nextMenu: myMenu,
+        mode: "merge",
+      });
+      toast.success("同步完成");
+    } catch (error) {
+      console.log(error);
+      toast.error("同步失败，请检查云同步配置");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   const spinFateBox = () => {
     if (fateLoading) return;
 
@@ -769,25 +1215,32 @@ export default function Home() {
         .filter((item) => item.type === "like")
         .map((item) => item.food);
       const menuFoods = myMenu;
-      const pool = [
-        ...savedFoods,
-        ...menuFoods,
-        ...fateFallbackFoods,
-      ].filter((item, index, arr) =>
-        item && arr.indexOf(item) === index
-      );
-      const picked = pickRandom(pool);
-      const source = menuFoods.includes(picked)
-        ? "从你的菜单抽中"
-        : savedFoods.includes(picked)
-          ? "从你的饮食日记抽中"
-          : "命运临时塞来的";
+      const blockedFoods = [
+        ...candidateFoods,
+        ...(food ? [food] : []),
+      ];
+      let picked = selectWeightedFood({
+        recentFoods: savedFoods,
+        menuFoods,
+        blockedFoods,
+      });
+
+      if (!picked.food) {
+        picked = selectWeightedFood({
+          recentFoods: savedFoods,
+          menuFoods,
+          blockedFoods: [],
+        });
+      }
 
       setFateResult({
-        food: picked,
-        source,
-        reason: `${source}：${picked}。别再和选择题拉扯了，今天就让它落地。`,
+        food: picked.food,
+        source: picked.source,
+        reason: `${picked.source}：${picked.food}。别再和选择题拉扯了，今天就让它落地。`,
       });
+      setCandidateFoods((prev) =>
+        uniq([...prev, picked.food]).slice(-60)
+      );
       setFateLoading(false);
     }, 1300);
   };
@@ -832,11 +1285,16 @@ export default function Home() {
             ...getClientContext(),
             history: memorySource
               .filter((item) => item.type === "like")
-              .map((item) => item.food),
+              .map((item) => item.food)
+              .concat(candidateFoods),
             memory: formatMemoryText(memorySource),
           }),
         }
       );
+
+      if (!response.ok) {
+        throw new Error("recommend api failed");
+      }
 
       const data =
         await response.json();
@@ -847,6 +1305,9 @@ export default function Home() {
       setFood(parsed.food);
 
       setReason(parsed.reason);
+      setCandidateFoods((prev) =>
+        uniq([...prev, parsed.food]).slice(-60)
+      );
     } catch (error) {
       console.log(error);
       toast.error("AI 刚刚有点忙，请再试一次");
@@ -885,12 +1346,16 @@ export default function Home() {
               mealTime,
               userId: uid,
               mood: mood.join("、"),
-              menu: myMenu,
+              menu: isIngredientMode ? [] : myMenu,
               history: cookHistory,
               availableIngredients,
               ...getClientContext(),
             }),
           });
+
+        if (!response.ok) {
+          throw new Error("cook api failed");
+        }
 
         const data =
           await response.json();
@@ -941,6 +1406,8 @@ export default function Home() {
     }
 
     toast.success("今天终于不用纠结了");
+    setCandidateFoods([]);
+    setFateResult(null);
     setFood("");
     setReason("");
     return true;
@@ -956,7 +1423,10 @@ export default function Home() {
 
     try {
       const imageUrl = await compressImage(file);
-      const imageId = await saveMealPhoto(imageUrl);
+      const imageId = await saveMealPhoto(
+        imageUrl,
+        ensureUser()
+      );
 
       if (imageId) {
         setPhotoUrls((prev) => ({
@@ -1012,7 +1482,7 @@ export default function Home() {
             group.items.map(async (item) => {
               const storedImage =
                 getMemoryImageUrl(item, photoUrls) ??
-                (await readMealPhoto(item.imageId));
+                (await readMealPhoto(item.imageId, userId));
 
               return {
                 food: item.food,
@@ -1058,20 +1528,24 @@ export default function Home() {
         },
         body: JSON.stringify({ imageDataUrl }),
       });
-      const result =
-        (await response.json()) as IdentifyResult;
+      if (!response.ok) {
+        throw new Error("identify api failed");
+      }
+      const result = normalizeIdentifyResult(
+        await response.json()
+      );
 
       setIdentifyResult(result);
       if (result.kind === "dish") {
-        toast.success("识别到菜品");
+        toast.success("识别到可用食材");
       } else if (result.kind === "ingredient") {
         toast.success("识别到食材");
       } else {
-        toast.error("这张图不像菜品，请换一张菜的照片");
+        toast.error("这张图里的食材不够明确");
       }
     } catch (error) {
       console.log(error);
-      toast.error("识菜失败，请换张清晰照片");
+      toast.error("识材失败，请换张清晰照片");
     } finally {
       setIdentifyLoading(false);
     }
@@ -1088,14 +1562,6 @@ export default function Home() {
     if (saveMenu([...myMenu, identifyResult.dish])) {
       toast.success("已加入我的菜单");
     }
-  };
-
-  const useIdentifiedDishToday = () => {
-    if (identifyResult?.kind !== "dish") return;
-
-    setFood(identifyResult.dish);
-    setReason(identifyResult.suggestion);
-    setPage("today");
   };
 
   const cookWithIdentifiedIngredients = () => {
@@ -1145,8 +1611,74 @@ export default function Home() {
         </p>
 
         <p className="text-xs text-gray-400 mt-3">
-          用户 ID：{shortUserId(userId)}
+          {accountSession
+            ? `账号：${accountSession.account}`
+            : `本地用户 ID：${shortUserId(userId)}`}
         </p>
+
+        <div className="sync-panel mt-5 p-4">
+          {accountSession ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">
+                  已开启账号同步
+                </p>
+                <p className="text-xs muted-text mt-1">
+                  {lastSyncedAt
+                    ? `最近同步：${formatDateTime(lastSyncedAt)}`
+                    : "登录后会同步菜单和饮食日记"}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void manualSync()}
+                  disabled={syncLoading}
+                  className="secondary-button px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  {syncLoading ? "同步中" : "同步"}
+                </button>
+                <button
+                  onClick={logoutAccount}
+                  className="secondary-button px-4 py-2 text-sm"
+                >
+                  退出
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+              <input
+                value={loginAccount}
+                onChange={(event) =>
+                  setLoginAccount(event.target.value)
+                }
+                placeholder="账号名"
+                className="app-input px-4 py-3 text-sm"
+              />
+              <input
+                value={loginPasscode}
+                onChange={(event) =>
+                  setLoginPasscode(event.target.value)
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void loginAndSync();
+                  }
+                }}
+                placeholder="同步口令"
+                type="password"
+                className="app-input px-4 py-3 text-sm"
+              />
+              <button
+                onClick={() => void loginAndSync()}
+                disabled={syncLoading}
+                className="primary-button px-5 py-3 text-sm disabled:opacity-40"
+              >
+                {syncLoading ? "同步中" : "登录"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 首页 */}
@@ -1641,14 +2173,14 @@ export default function Home() {
 
           <div className="surface-card p-8">
             <h2 className="text-3xl font-semibold leading-tight">
-              拍照识菜/识材
+              拍照识材
             </h2>
             <p className="muted-text mt-5 leading-8">
-              只识别菜品、餐食和常见食材，识别后可以加入菜单或按食材做菜。
+              拍一下冰箱、案板或剩余食材，先识别能用的食材，再生成适合清库存的家常菜。
             </p>
 
             <label className="primary-button mt-6 block text-center py-4 cursor-pointer">
-              上传或拍照
+              拍照清理冰箱食材
               <input
                 type="file"
                 accept="image/*"
@@ -1667,7 +2199,7 @@ export default function Home() {
             {identifyResult && (
               <div className="mt-6 inset-card p-5">
                 <p className="text-sm text-gray-400 mb-2">
-                  识别结果
+                  食材盘点
                 </p>
                 <h3 className="text-2xl font-semibold">
                   {identifyResult.dish}
@@ -1679,7 +2211,7 @@ export default function Home() {
                 {identifyResult.ingredients.length > 0 && (
                   <div className="mt-5">
                     <p className="text-sm text-gray-400 mb-3">
-                      识别到的食材
+                      可用食材
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {identifyResult.ingredients.map(
@@ -1699,7 +2231,7 @@ export default function Home() {
                 {identifyResult.cookableDishes.length > 0 && (
                   <div className="mt-5 space-y-3">
                     <p className="text-sm text-gray-400">
-                      可做菜品参考
+                      可以顺手做
                     </p>
                     {identifyResult.cookableDishes.map(
                       (item) => (
@@ -1721,7 +2253,7 @@ export default function Home() {
 
                 {identifyResult.kind !==
                   "non_food" && (
-                  <div className="grid grid-cols-1 gap-3 mt-5 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 mt-5 sm:grid-cols-2">
                     {identifyResult.kind === "dish" && (
                       <button
                         onClick={
@@ -1736,16 +2268,8 @@ export default function Home() {
                       onClick={cookWithIdentifiedIngredients}
                       className="secondary-button py-3"
                     >
-                      用食材做菜
+                      按这些食材推荐
                     </button>
-                    {identifyResult.kind === "dish" && (
-                      <button
-                        onClick={useIdentifiedDishToday}
-                        className="secondary-button py-3"
-                      >
-                        今天就吃
-                      </button>
-                    )}
                   </div>
                 )}
               </div>
@@ -1810,20 +2334,6 @@ export default function Home() {
 
             <button
               onClick={() =>
-                setPage("discover")
-              }
-              className={`tab-item ${
-                page === "discover"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              灵感
-            </button>
-
-            <button
-              onClick={() =>
                 setPage("menu")
               }
               className={`tab-item ${
@@ -1834,6 +2344,20 @@ export default function Home() {
             >
               <span className="tab-dot" />
               我的菜单
+            </button>
+
+            <button
+              onClick={() =>
+                setPage("discover")
+              }
+              className={`tab-item ${
+                page === "discover"
+                  ? "tab-item-active"
+                  : ""
+              }`}
+            >
+              <span className="tab-dot" />
+              灵感
             </button>
 
             <button

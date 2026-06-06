@@ -14,6 +14,7 @@ type JsonPromptHarnessOptions<T> = {
   temperature?: number;
   maxAttempts?: number;
   repairPrompt?: string;
+  throwOnFailure?: boolean;
   validate?: (value: T) => void;
 };
 
@@ -55,6 +56,7 @@ export async function runJsonPrompt<T>({
   maxAttempts = 2,
   repairPrompt =
     "上一次输出没有通过校验。只返回合法 JSON，不要 markdown，不要解释，不要添加多余字段。",
+  throwOnFailure = false,
   validate,
 }: JsonPromptHarnessOptions<T>): Promise<T> {
   let lastText = "";
@@ -95,6 +97,12 @@ export async function runJsonPrompt<T>({
   }
 
   console.log("JSON harness fallback. Last output:", lastText);
+
+  if (throwOnFailure) {
+    throw new Error(
+      `JSON harness failed after ${maxAttempts} attempts: ${String(lastError)}`
+    );
+  }
 
   return fallback;
 }

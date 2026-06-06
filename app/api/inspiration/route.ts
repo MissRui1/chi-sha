@@ -1,5 +1,5 @@
 import { createAiClient, getAiModel } from "@/lib/ai";
-import { cleanJson } from "@/lib/prompt-harness";
+import { runJsonPrompt } from "@/lib/prompt-harness";
 import { z } from "zod";
 
 const CACHE_TTL = 10 * 60 * 1000;
@@ -13,9 +13,9 @@ const inspirationCache = new Map<string, CacheEntry>();
 
 const InspirationRequestSchema = z.object({
   userId: z.string().min(1),
-  mood: z.string().optional(),
-  mealTime: z.string().optional(),
-  memory: z.array(z.string()).optional(),
+  mood: z.string().max(160).optional(),
+  mealTime: z.string().max(20).optional(),
+  memory: z.array(z.string().max(160)).max(120).optional(),
 });
 
 const InspirationSchema = z
@@ -54,27 +54,18 @@ const fallbackInspirations = [
   },
 ];
 
-const parseInspirations = (text: string) => {
-  try {
-    const parsed = JSON.parse(cleanJson(text));
-    const result = InspirationSchema.parse(parsed);
-    const normalized =
-      result.length >= 6
-        ? result.slice(0, 6)
-        : [
-            ...result,
-            ...fallbackInspirations.slice(
-              0,
-              6 - result.length
-            ),
-          ];
-
-    return JSON.stringify(normalized);
-  } catch (error) {
-    console.log("Invalid inspiration response:", error);
-    return JSON.stringify(fallbackInspirations);
-  }
-};
+const normalizeInspirations = (
+  result: z.infer<typeof InspirationSchema>
+) =>
+  result.length >= 6
+    ? result.slice(0, 6)
+    : [
+        ...result,
+        ...fallbackInspirations.slice(
+          0,
+          6 - result.length
+        ),
+      ];
 
 export async function POST(req: Request) {
   try {
@@ -85,7 +76,8 @@ export async function POST(req: Request) {
       memory,
     } = InspirationRequestSchema.parse(await req.json());
     const memoryList = memory ?? [];
-    const memoryDigest = memoryList
+    const promptMemory = memoryList.slice(-24);
+    const memoryDigest = promptMemory
       .slice(-12)
       .join("|")
       .slice(0, 1200);
@@ -172,28 +164,27 @@ ${mealTime}
 ${mood}
 
 最近记录：
-${memoryList.join("、")}
+${promptMemory.join("、")}
 `;
     const client = createAiClient();
 
-    const completion =
-      await client.chat.completions.create({
-        model: getAiModel(),
-
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-
-        temperature: 1.3,
-      });
-
-    const result =
-      completion.choices[0].message.content;
-    const normalizedResult = parseInspirations(
-      result ?? ""
+    const parsed = await runJsonPrompt({
+      client,
+      model: getAiModel(),
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      schema: InspirationSchema,
+      fallback: fallbackInspirations,
+      temperature: 1.3,
+      maxAttempts: 2,
+      throwOnFailure: true,
+    });
+    const normalizedResult = JSON.stringify(
+      normalizeInspirations(parsed)
     );
 
     inspirationCache.set(cacheKey, {
@@ -217,13 +208,18 @@ ${memoryList.join("、")}
   } catch (error) {
     console.log(error);
 
-    return Response.json({
-      result: JSON.stringify(fallbackInspirations),
-      cached: false,
-    }, {
-      headers: {
-        "Cache-Control": "no-store",
+    return Response.json(
+      {
+        result: JSON.stringify(fallbackInspirations),
+        cached: false,
+        ok: false,
       },
-    });
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   }
 }

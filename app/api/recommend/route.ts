@@ -19,8 +19,8 @@ type MemoryPayload =
     };
 
 const StringOrArraySchema = z.union([
-  z.string(),
-  z.array(z.string()),
+  z.string().max(160),
+  z.array(z.string().max(80)).max(20),
 ]);
 
 const MemorySchema = z.union([
@@ -28,10 +28,10 @@ const MemorySchema = z.union([
   z
     .object({
       type: z.enum(["like", "dislike"]).optional(),
-      mealTime: z.string().optional(),
+      mealTime: z.string().max(20).optional(),
       mood: StringOrArraySchema.optional(),
       style: StringOrArraySchema.optional(),
-      food: z.string().optional(),
+      food: z.string().max(80).optional(),
     })
     .passthrough(),
 ]);
@@ -43,8 +43,8 @@ const RecommendRequestSchema = z.object({
   style: StringOrArraySchema.optional(),
   retry: z.boolean().optional(),
   previousFood: z.string().optional(),
-  history: z.array(z.string()).optional(),
-  memory: z.array(MemorySchema).optional(),
+  history: z.array(z.string().max(80)).max(80).optional(),
+  memory: z.array(MemorySchema).max(120).optional(),
   currentTime: z.string().optional(),
   timezone: z.string().optional(),
 });
@@ -297,21 +297,41 @@ const getTimeInfo = (
   currentTime?: string,
   timezone = "Asia/Shanghai"
 ): TimeContext => {
-  const now = currentTime
+  const parsed = currentTime
     ? new Date(currentTime)
     : new Date();
+  const now = Number.isNaN(parsed.getTime())
+    ? new Date()
+    : parsed;
+  let safeTimezone = timezone;
+  let parts: Intl.DateTimeFormatPart[];
 
-  const parts = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    weekday: "short",
-    hour12: false,
-  }).formatToParts(now);
+  try {
+    parts = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: safeTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      weekday: "short",
+      hour12: false,
+    }).formatToParts(now);
+  } catch {
+    safeTimezone = "Asia/Shanghai";
+    parts = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: safeTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      weekday: "short",
+      hour12: false,
+    }).formatToParts(now);
+  }
 
   const hour = readNumberPart(parts, "hour");
   const minute = readNumberPart(parts, "minute");
@@ -350,7 +370,7 @@ const getTimeInfo = (
     dayOfWeek,
     month,
     localText: new Intl.DateTimeFormat("zh-CN", {
-      timeZone: timezone,
+      timeZone: safeTimezone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -479,39 +499,88 @@ const formatMemory = (memory: MemoryPayload[]) =>
 
 const fallbackRecommendation = (
   mealTime: string,
-  moodList: string[]
+  moodList: string[],
+  avoidFoods: string[] = []
 ) => {
+  const avoid = new Set(
+    avoidFoods.map((item) =>
+      item.replace(/\s+/g, "").toLowerCase()
+    )
+  );
+  const pick = (
+    items: Array<{ food: string; reason: string }>
+  ) =>
+    items.find(
+      (item) =>
+        !avoid.has(
+          item.food.replace(/\s+/g, "").toLowerCase()
+        )
+    ) ?? items[0];
+
   if (mealTime === "奶茶") {
-    return {
-      food: "茉莉奶绿",
-      reason:
-        moodList.includes("减脂期")
-          ? "建议无糖或三分糖、去冰，配料少一点，满足奶茶欲望也别太有负担。"
-          : "建议半糖、去冰，茶香清爽，不会太腻。",
-    };
+    return pick([
+      {
+        food: "茉莉奶绿",
+        reason:
+          moodList.includes("减脂期")
+            ? "建议无糖或三分糖、去冰，配料少一点，满足奶茶欲望也别太有负担。"
+            : "建议半糖、去冰，茶香清爽，不会太腻。",
+      },
+      {
+        food: "鸭屎香柠檬茶",
+        reason:
+          "茶香明显又清爽，建议少糖少冰，适合想喝点提神但不想太腻的时候。",
+      },
+    ]);
   }
 
   if (mealTime === "早餐") {
-    return {
-      food: "豆浆油条",
-      reason:
-        "真实早餐、热乎、容易买到，今天先用熟悉的一口把状态打开。",
-    };
+    return pick([
+      {
+        food: "豆浆油条",
+        reason:
+          "真实早餐、热乎、容易买到，今天先用熟悉的一口把状态打开。",
+      },
+      {
+        food: "鲜肉小馄饨",
+        reason:
+          "早上吃一碗热乎的更稳，份量不夸张，也不用太费劲做决定。",
+      },
+    ]);
   }
 
   if (moodList.includes("减脂期")) {
-    return {
-      food: "鸡胸肉沙拉",
-      reason:
-        "低负担、清爽，也能吃饱，不会打乱今天的减脂节奏。",
-    };
+    return pick([
+      {
+        food: "鸡胸肉沙拉",
+        reason:
+          "低负担、清爽，也能吃饱，不会打乱今天的减脂节奏。",
+      },
+      {
+        food: "虾仁糙米饭",
+        reason:
+          "蛋白质和主食都稳，吃完不容易犯困，也不会太折腾今天的计划。",
+      },
+    ]);
   }
 
-  return {
-    food: "热汤面",
-    reason:
-      "AI 刚刚短暂失联了，先给你一个稳定、热乎、现实可吃到的选择。",
-  };
+  return pick([
+    {
+      food: "热汤面",
+      reason:
+        "AI 刚刚短暂失联了，先给你一个稳定、热乎、现实可吃到的选择。",
+    },
+    {
+      food: "黄焖鸡米饭",
+      reason:
+        "这是很现实的一餐，热乎、有主食也有菜，适合先把选择压力放下来。",
+    },
+    {
+      food: "三鲜馄饨",
+      reason:
+        "今天先来一碗清爽热乎的，负担不重，也能认真把这一顿吃好。",
+    },
+  ]);
 };
 
 const getTemperature = (mealTime: string) =>
@@ -652,9 +721,14 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
         },
       ],
       schema: RecommendSchema,
-      fallback: fallbackRecommendation(mealTime, moodList),
+      fallback: fallbackRecommendation(
+        mealTime,
+        moodList,
+        history
+      ),
       temperature: getTemperature(mealTime),
       maxAttempts: 3,
+      throwOnFailure: true,
       validate: (value) =>
         validateRecommendation(
           value,
@@ -670,12 +744,16 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
   } catch (error) {
     console.log(error);
 
-    return Response.json({
-      result: JSON.stringify(
-        fallbackRecommendation("晚餐", [
-          "奖励自己",
-        ])
-      ),
-    });
+    return Response.json(
+      {
+        ok: false,
+        result: JSON.stringify(
+          fallbackRecommendation("晚餐", [
+            "奖励自己",
+          ])
+        ),
+      },
+      { status: 503 }
+    );
   }
 }

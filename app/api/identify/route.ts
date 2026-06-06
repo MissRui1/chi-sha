@@ -29,6 +29,25 @@ const IdentifySchema = z.object({
       })
     )
     .max(3),
+}).superRefine((value, ctx) => {
+  if (
+    value.kind !== "non_food" &&
+    value.ingredients.length === 0
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "food image must include ingredients",
+      path: ["ingredients"],
+    });
+  }
+
+  if (value.kind === "non_food" && value.isDish) {
+    ctx.addIssue({
+      code: "custom",
+      message: "non_food cannot be dish",
+      path: ["isDish"],
+    });
+  }
 });
 
 type IdentifyResult = z.infer<typeof IdentifySchema>;
@@ -73,7 +92,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "你是菜品与食材识别引擎。只识别可食用的成品菜、餐食、饮品或常见做饭食材；不要把锅、餐具、包装、家具等物品当作食物。只返回 JSON。",
+            "你是食材识别与清库存做菜引擎。重点识别图片里的可食用食材；成品菜也要尽量拆出主要食材。不要把锅、餐具、包装、家具等物品当作食物。只返回 JSON。",
         },
         {
           role: "user",
@@ -81,7 +100,7 @@ export async function POST(req: Request) {
             {
               type: "text",
               text:
-                '判断图片主体是否为可食用的成品菜/餐食/饮品/食材。kind 只能是 "dish"、"ingredient"、"non_food"。成品菜/餐食/饮品用 kind="dish"，isDish=true，dish 写具体菜名或饮品名。未烹饪食材用 kind="ingredient"，isDish=false，dish 写“识别到食材”。非食物用 kind="non_food"，isDish=false，dish 写“未识别菜品”。ingredients 列出 1-8 个可见食材；cookableDishes 给出最多 3 个可用这些食材做的中国家常菜简案，非食物为空。严格返回 JSON：{"kind":"ingredient","isDish":false,"dish":"识别到食材","suggestion":"识别到番茄和鸡蛋，可以做一道简单家常菜。","ingredients":["番茄","鸡蛋"],"cookableDishes":[{"dish":"番茄炒蛋","reason":"番茄和鸡蛋都能直接用上，做法简单稳定。","ingredients":["番茄","鸡蛋","盐","葱"],"steps":["番茄切块，鸡蛋打散。","先炒鸡蛋盛出，再炒番茄出汁。","倒回鸡蛋，加盐炒匀出锅。"],"tips":"番茄先炒出汁会更入味。"}]}',
+                '判断图片里是否有可食用食材。kind 只能是 "ingredient"、"dish"、"non_food"。未烹饪或明显可拆分食材优先用 kind="ingredient"，isDish=false，dish 写“识别到食材”。成品菜/餐食/饮品如果能判断，kind="dish"，isDish=true，但 ingredients 必须列出可见或合理的主要食材。非食物用 kind="non_food"，isDish=false，dish 写“未识别食材”。ingredients 列出 1-8 个可见食材；cookableDishes 给出最多 3 个适合清理冰箱/处理剩余食材的中国家常菜简案，非食物为空。严格返回 JSON：{"kind":"ingredient","isDish":false,"dish":"识别到食材","suggestion":"识别到番茄和鸡蛋，可以优先做一道清库存家常菜。","ingredients":["番茄","鸡蛋"],"cookableDishes":[{"dish":"番茄炒蛋","reason":"番茄和鸡蛋都能直接用上，做法简单稳定。","ingredients":["番茄","鸡蛋","盐","葱"],"steps":["番茄切块，鸡蛋打散。","先炒鸡蛋盛出，再炒番茄出汁。","倒回鸡蛋，加盐炒匀出锅。"],"tips":"番茄先炒出汁会更入味。"}]}',
             },
             {
               type: "image_url",
@@ -96,11 +115,18 @@ export async function POST(req: Request) {
       fallback: fallbackResult,
       temperature: 0.15,
       maxAttempts: 2,
+      throwOnFailure: true,
     });
 
     return Response.json(result);
   } catch (error) {
     console.log(error);
-    return Response.json(fallbackResult);
+    return Response.json(
+      {
+        ...fallbackResult,
+        ok: false,
+      },
+      { status: 503 }
+    );
   }
 }
