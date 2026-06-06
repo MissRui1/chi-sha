@@ -773,14 +773,26 @@ const MealCard = ({
       )}
 
       <div className="p-4">
-        <h4 className="font-semibold leading-tight">
-          {item.food}
-        </h4>
+        <div className="flex items-start justify-between gap-3">
+          <h4 className="font-semibold leading-tight">
+            {item.food}
+          </h4>
+          <span className="meal-detail-pill">详情</span>
+        </div>
         <p className="text-xs muted-text mt-2">
           {formatDateTime(item.time, {
             timezone: item.timezone,
             timeUnknown: item.timeUnknown,
           })}
+        </p>
+        <p className="mt-3 text-xs body-text leading-5">
+          {[
+            item.mealTime,
+            item.mood,
+            item.style,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "点开查看这一顿的完整记录"}
         </p>
       </div>
     </button>
@@ -2969,37 +2981,46 @@ export default function Home() {
             className="meal-detail-panel"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4 p-5">
-              <div>
-                <p className="text-sm text-gray-400">
-                  饮食记录详情
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold leading-tight">
-                  {selectedMeal.food}
-                </h2>
+            <div className="meal-detail-hero p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm opacity-70">
+                    这一顿的完整记录
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold leading-tight">
+                    {selectedMeal.food}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMeal(null)}
+                  aria-label="关闭详情"
+                  className="icon-button"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedMeal(null)}
-                aria-label="关闭详情"
-                className="icon-button"
-              >
-                <X size={18} />
-              </button>
+              <p className="mt-5 text-sm leading-7 opacity-80">
+                好好吃饭这件事，有时候就是把自己从忙乱里轻轻捞回来。
+              </p>
             </div>
 
-            {selectedMealImage && (
+            {selectedMealImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={selectedMealImage}
                 alt={selectedMeal.food}
                 className="max-h-[52vh] w-full object-cover"
               />
+            ) : (
+              <div className="meal-detail-photo-empty">
+                这顿没有照片，但记录本身已经很珍贵。
+              </div>
             )}
 
             <div className="grid gap-3 p-5">
-              <div className="detail-row">
-                <span>时间</span>
+              <div className="detail-row detail-row-primary">
+                <span>记录时间</span>
                 <strong>
                   {formatDateTime(selectedMeal.time, {
                     timezone: selectedMeal.timezone,
@@ -3007,18 +3028,23 @@ export default function Home() {
                   })}
                 </strong>
               </div>
-              <div className="detail-row">
-                <span>餐段</span>
-                <strong>{selectedMeal.mealTime || "未记录"}</strong>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="detail-mini-card">
+                  <span>餐段</span>
+                  <strong>{selectedMeal.mealTime || "未记录"}</strong>
+                </div>
+                <div className="detail-mini-card">
+                  <span>状态</span>
+                  <strong>{selectedMeal.mood || "未记录"}</strong>
+                </div>
+                <div className="detail-mini-card">
+                  <span>类型</span>
+                  <strong>{selectedMeal.style || "未记录"}</strong>
+                </div>
               </div>
-              <div className="detail-row">
-                <span>状态</span>
-                <strong>{selectedMeal.mood || "未记录"}</strong>
-              </div>
-              <div className="detail-row">
-                <span>类型</span>
-                <strong>{selectedMeal.style || "未记录"}</strong>
-              </div>
+              <p className="detail-note">
+                以后回头看这一周，会发现自己不是随便糊弄过去的。
+              </p>
             </div>
           </motion.div>
         </div>

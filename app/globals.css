@@ -291,6 +291,17 @@ input:focus-visible {
   box-shadow: var(--shadow);
 }
 
+.meal-detail-pill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.38rem 0.55rem;
+}
+
 .meal-card img {
   aspect-ratio: 1.05;
 }
@@ -317,6 +328,25 @@ input:focus-visible {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
 }
 
+.meal-detail-hero {
+  background:
+    linear-gradient(135deg, var(--button), color-mix(in srgb, var(--accent) 74%, var(--button)));
+  color: var(--button-text);
+}
+
+.meal-detail-photo-empty {
+  display: flex;
+  min-height: 12rem;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background:
+    linear-gradient(135deg, var(--surface-muted), var(--surface-inset));
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.8;
+}
+
 .detail-row {
   display: flex;
   align-items: flex-start;
@@ -326,6 +356,37 @@ input:focus-visible {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface-inset);
+}
+
+.detail-row-primary {
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface));
+}
+
+.detail-mini-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-inset);
+}
+
+.detail-mini-card span {
+  color: var(--soft-muted);
+  font-size: 0.78rem;
+}
+
+.detail-mini-card strong {
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.detail-note {
+  border-left: 3px solid var(--accent);
+  margin-top: 0.25rem;
+  padding: 0.85rem 0 0.85rem 1rem;
+  color: var(--muted);
+  line-height: 1.8;
 }
 
 .detail-row span {
