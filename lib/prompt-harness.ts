@@ -18,11 +18,32 @@ type JsonPromptHarnessOptions<T> = {
 };
 
 export const cleanJson = (value: string) =>
-  value
+  {
+    const cleaned = value
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/```$/i, "")
     .trim();
+
+    const objectStart = cleaned.indexOf("{");
+    const objectEnd = cleaned.lastIndexOf("}");
+    const arrayStart = cleaned.indexOf("[");
+    const arrayEnd = cleaned.lastIndexOf("]");
+
+    if (
+      objectStart >= 0 &&
+      objectEnd > objectStart &&
+      (arrayStart === -1 || objectStart < arrayStart)
+    ) {
+      return cleaned.slice(objectStart, objectEnd + 1);
+    }
+
+    if (arrayStart >= 0 && arrayEnd > arrayStart) {
+      return cleaned.slice(arrayStart, arrayEnd + 1);
+    }
+
+    return cleaned;
+  };
 
 export async function runJsonPrompt<T>({
   client,

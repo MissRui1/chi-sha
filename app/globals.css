@@ -81,7 +81,8 @@ input:focus-visible {
 
 .inset-card,
 .menu-row,
-.empty-state {
+.empty-state,
+.recipe-suggestion {
   background: var(--surface-inset);
   border: 1px solid var(--border);
   border-radius: 16px;

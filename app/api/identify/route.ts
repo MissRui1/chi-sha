@@ -4,8 +4,8 @@ import { runJsonPrompt } from "@/lib/prompt-harness";
 
 const IdentifyRequestSchema = z
   .object({
-    imageDataUrl: z.string().optional(),
-    base64: z.string().optional(),
+    imageDataUrl: z.string().max(2_800_000).optional(),
+    base64: z.string().max(2_800_000).optional(),
   })
   .refine(
     (value) => Boolean(value.imageDataUrl ?? value.base64),
@@ -13,24 +13,46 @@ const IdentifyRequestSchema = z
   );
 
 const IdentifySchema = z.object({
+  kind: z.enum(["dish", "ingredient", "non_food"]),
   isDish: z.boolean(),
   dish: z.string().min(1),
   suggestion: z.string().min(1),
+  ingredients: z.array(z.string().trim().min(1)).max(8),
+  cookableDishes: z
+    .array(
+      z.object({
+        dish: z.string().min(1),
+        reason: z.string().min(4),
+        ingredients: z.array(z.string().min(1)).min(2).max(8),
+        steps: z.array(z.string().min(4)).min(2).max(5),
+        tips: z.string().min(1),
+      })
+    )
+    .max(3),
 });
 
 type IdentifyResult = z.infer<typeof IdentifySchema>;
 
 const fallbackResult: IdentifyResult = {
+  kind: "non_food",
   isDish: false,
   dish: "未识别菜品",
   suggestion:
     "图片信息有点不够明确，可以换一张更清晰、光线更好的照片再试一次。",
+  ingredients: [],
+  cookableDishes: [],
 };
 
 const toDataUrl = (body: z.infer<typeof IdentifyRequestSchema>) => {
   const input = (body.imageDataUrl ?? body.base64 ?? "").trim();
 
   if (input.startsWith("data:image/")) {
+    if (
+      !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(input)
+    ) {
+      throw new Error("Unsupported image type");
+    }
+
     return input;
   }
 
@@ -51,7 +73,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "你是菜品识别引擎，只识别可食用的菜品/餐食/饮品。不要把锅、餐具、包装、动物、植物、家具等物品当作菜。只返回 JSON。",
+            "你是菜品与食材识别引擎。只识别可食用的成品菜、餐食、饮品或常见做饭食材；不要把锅、餐具、包装、家具等物品当作食物。只返回 JSON。",
         },
         {
           role: "user",
@@ -59,7 +81,7 @@ export async function POST(req: Request) {
             {
               type: "text",
               text:
-                '判断图片主体是否为菜品、餐食或饮品。如果是，给出最可能的具体菜名；如果不是，isDish 为 false，dish 写“未识别菜品”。suggestion 写一句简短说明。严格返回 JSON：{"isDish":true,"dish":"","suggestion":""}',
+                '判断图片主体是否为可食用的成品菜/餐食/饮品/食材。kind 只能是 "dish"、"ingredient"、"non_food"。成品菜/餐食/饮品用 kind="dish"，isDish=true，dish 写具体菜名或饮品名。未烹饪食材用 kind="ingredient"，isDish=false，dish 写“识别到食材”。非食物用 kind="non_food"，isDish=false，dish 写“未识别菜品”。ingredients 列出 1-8 个可见食材；cookableDishes 给出最多 3 个可用这些食材做的中国家常菜简案，非食物为空。严格返回 JSON：{"kind":"ingredient","isDish":false,"dish":"识别到食材","suggestion":"识别到番茄和鸡蛋，可以做一道简单家常菜。","ingredients":["番茄","鸡蛋"],"cookableDishes":[{"dish":"番茄炒蛋","reason":"番茄和鸡蛋都能直接用上，做法简单稳定。","ingredients":["番茄","鸡蛋","盐","葱"],"steps":["番茄切块，鸡蛋打散。","先炒鸡蛋盛出，再炒番茄出汁。","倒回鸡蛋，加盐炒匀出锅。"],"tips":"番茄先炒出汁会更入味。"}]}',
             },
             {
               type: "image_url",

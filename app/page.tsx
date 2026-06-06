@@ -2,6 +2,7 @@
 
 import {
   useState,
+  useEffect,
   useCallback,
   type Dispatch,
   type SetStateAction,
@@ -10,26 +11,39 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image";
 import {
+  readMealPhoto,
+  saveMealPhoto,
+} from "@/lib/photo-store";
+import {
   exportMealWall,
   shareMealWall,
 } from "@/lib/share";
-import { getOrCreateUserId } from "@/lib/user";
+import {
+  getOrCreateUserId,
+  getUserStorageKey,
+} from "@/lib/user";
 
 type MemoryItem = {
-  userId?: string;
+  userId: string;
   mealTime: string;
   mood: string;
   style: string;
   food: string;
   time: string;
+  timezone?: string;
+  timeUnknown?: boolean;
   type: "like" | "dislike";
+  imageId?: string;
   imageUrl?: string;
 };
 
 type IdentifyResult = {
+  kind: "dish" | "ingredient" | "non_food";
   isDish: boolean;
   dish: string;
   suggestion: string;
+  ingredients: string[];
+  cookableDishes: CookResult[];
 };
 
 type CookResult = {
@@ -99,8 +113,21 @@ const inferMealTime = () => {
   return "晚餐";
 };
 
-const formatDateTime = (value: string) =>
-  new Intl.DateTimeFormat("zh-CN", {
+const formatDateTime = (
+  value: string,
+  options: {
+    timezone?: string;
+    timeUnknown?: boolean;
+  } = {}
+) => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+
+  const formatted = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: options.timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -108,7 +135,19 @@ const formatDateTime = (value: string) =>
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(new Date(value));
+  }).format(date);
+
+  return options.timeUnknown
+    ? `${formatted}（旧记录时间未知）`
+    : formatted;
+};
+
+const shortUserId = (value: string) =>
+  value ? value.slice(0, 8) : "未生成";
+
+const getCurrentTimezone = () =>
+  Intl.DateTimeFormat().resolvedOptions().timeZone ||
+  "Asia/Shanghai";
 
 const ResultSkeleton = ({
   className = "",
@@ -150,32 +189,42 @@ const cleanJson = (str: string) =>
     .trim();
 
 const parseMemoryRecord = (
-  item: string | MemoryItem
+  item: string | Partial<MemoryItem>,
+  fallbackUserId: string
 ): MemoryItem => {
   if (typeof item === "string") {
     const parts = item.split(" · ");
+    const migratedAt = new Date().toISOString();
 
     return {
+      userId: fallbackUserId,
       mealTime: parts[0] || "",
       mood: parts[1] || "",
       style: parts[2] || "",
-    food: parts[3] || item,
-      time: new Date().toISOString(),
+      food: parts[3] || item,
+      time: migratedAt,
+      timezone: getCurrentTimezone(),
+      timeUnknown: true,
       type: "like",
     };
   }
 
+  const hasTime = Boolean(item.time);
+
   return {
-    userId: item.userId || "",
+    userId: fallbackUserId,
     mealTime: item.mealTime || "",
     mood: item.mood || "",
     style: item.style || "",
     food: item.food || "",
     time: item.time || new Date().toISOString(),
+    timezone: item.timezone || getCurrentTimezone(),
+    timeUnknown: item.timeUnknown || !hasTime,
     type:
       item.type === "dislike"
         ? "dislike"
         : "like",
+    imageId: item.imageId,
     imageUrl: item.imageUrl,
   };
 };
@@ -232,24 +281,67 @@ const buildInsights = (
   return result;
 };
 
+const safeSetLocalStorage = (
+  key: string,
+  value: string
+) => {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.log("Local storage write failed:", error);
+    return false;
+  }
+};
+
+const archiveLegacyStorageKey = (
+  key: string,
+  value: string
+) => {
+  const archiveKey = `${key}:legacy:${Date.now()}`;
+
+  if (safeSetLocalStorage(archiveKey, value)) {
+    localStorage.removeItem(key);
+  }
+};
+
 const readMemory = (): MemoryItem[] => {
   if (typeof window === "undefined") {
     return [];
   }
 
   try {
-    const savedMemory =
-      localStorage.getItem("memory");
+    const userId = getOrCreateUserId();
+    const userKey = getUserStorageKey(userId, "memory");
+    const savedUserMemory = localStorage.getItem(userKey);
+    const savedLegacyMemory = localStorage.getItem("memory");
+    const savedMemory = savedUserMemory ?? savedLegacyMemory;
 
     if (!savedMemory) {
       return [];
     }
 
     const parsed = JSON.parse(savedMemory);
-
-    return Array.isArray(parsed)
-      ? parsed.map(parseMemoryRecord)
+    const records = Array.isArray(parsed)
+      ? parsed.map((item) =>
+          parseMemoryRecord(item, userId)
+        )
       : [];
+
+    const wroteUserMemory = safeSetLocalStorage(
+      userKey,
+      JSON.stringify(records)
+    );
+
+    if (
+      wroteUserMemory &&
+      !savedUserMemory &&
+      savedLegacyMemory
+    ) {
+      archiveLegacyStorageKey("memory", savedLegacyMemory);
+    }
+
+    return records;
   } catch {
     return [];
   }
@@ -261,8 +353,11 @@ const readMenu = (): string[] => {
   }
 
   try {
-    const savedMenu =
-      localStorage.getItem("myMenu");
+    const userId = getOrCreateUserId();
+    const userKey = getUserStorageKey(userId, "myMenu");
+    const savedUserMenu = localStorage.getItem(userKey);
+    const savedLegacyMenu = localStorage.getItem("myMenu");
+    const savedMenu = savedUserMenu ?? savedLegacyMenu;
 
     if (!savedMenu) {
       return defaultMenuDishes;
@@ -270,12 +365,27 @@ const readMenu = (): string[] => {
 
     const parsed = JSON.parse(savedMenu);
 
-    return Array.isArray(parsed)
+    const menu = Array.isArray(parsed)
       ? parsed.filter(
           (item): item is string =>
             typeof item === "string"
         )
       : [];
+
+    const wroteUserMenu = safeSetLocalStorage(
+      userKey,
+      JSON.stringify(uniq(menu))
+    );
+
+    if (
+      wroteUserMenu &&
+      !savedUserMenu &&
+      savedLegacyMenu
+    ) {
+      archiveLegacyStorageKey("myMenu", savedLegacyMenu);
+    }
+
+    return menu;
   } catch {
     return [];
   }
@@ -331,6 +441,48 @@ const groupMeals = (items: MemoryItem[]) => {
   ].filter((group) => group.items.length > 0);
 };
 
+const getMemoryImageUrl = (
+  item: MemoryItem,
+  photoUrls: Record<string, string>
+) =>
+  item.imageUrl ||
+  (item.imageId ? photoUrls[item.imageId] : undefined);
+
+const MealCard = ({
+  item,
+  photoUrls,
+}: {
+  item: MemoryItem;
+  photoUrls: Record<string, string>;
+}) => {
+  const imageUrl = getMemoryImageUrl(item, photoUrls);
+
+  return (
+    <div className="mb-3 break-inside-avoid surface-card overflow-hidden">
+      {imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt={item.food}
+          className="w-full object-cover"
+        />
+      )}
+
+      <div className="p-4">
+        <h4 className="font-semibold leading-tight">
+          {item.food}
+        </h4>
+        <p className="text-xs muted-text mt-2">
+          {formatDateTime(item.time, {
+            timezone: item.timezone,
+            timeUnknown: item.timeUnknown,
+          })}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   const [page, setPage] = useState("today");
 
@@ -343,11 +495,7 @@ export default function Home() {
   const [style, setStyle] =
     useState<string[]>(["中餐"]);
 
-  const [userId] = useState(() =>
-    typeof window === "undefined"
-      ? ""
-      : getOrCreateUserId()
-  );
+  const [userId, setUserId] = useState("");
 
   const [food, setFood] = useState("");
 
@@ -358,12 +506,14 @@ export default function Home() {
     useState(false);
 
   const [memory, setMemory] =
-    useState<MemoryItem[]>(readMemory);
+    useState<MemoryItem[]>([]);
+
+  const [photoUrls, setPhotoUrls] = useState<
+    Record<string, string>
+  >({});
 
   const [insights, setInsights] =
-    useState<string[]>(() =>
-      buildInsights(readMemory())
-    );
+    useState<string[]>(() => buildInsights([]));
 
   const [inspirations, setInspirations] =
     useState<
@@ -375,7 +525,7 @@ export default function Home() {
 
   // 我的菜单
   const [myMenu, setMyMenu] =
-    useState<string[]>(readMenu);
+    useState<string[]>([]);
 
   const [newDish, setNewDish] =
     useState("");
@@ -408,6 +558,63 @@ export default function Home() {
   const [fateResult, setFateResult] =
     useState<FateResult | null>(null);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const uid = getOrCreateUserId();
+      const savedMemory = readMemory();
+      const savedMenu = readMenu();
+
+      setUserId(uid);
+      setMemory(savedMemory);
+      setInsights(buildInsights(savedMemory));
+      setMyMenu(savedMenu);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const missingIds = memory
+      .map((item) => item.imageId)
+      .filter(
+        (id): id is string => Boolean(id)
+      )
+      .filter((id) => !photoUrls[id]);
+
+    if (missingIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all(
+      missingIds.map(async (id) => {
+        const dataUrl = await readMealPhoto(id);
+        return [id, dataUrl] as const;
+      })
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+
+      setPhotoUrls((prev) => {
+        const next = { ...prev };
+
+        entries.forEach(([id, dataUrl]) => {
+          if (dataUrl) {
+            next[id] = dataUrl;
+          }
+        });
+
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [memory, photoUrls]);
+
   const toggleValue = (
     value: string,
     setter: Dispatch<
@@ -421,9 +628,21 @@ export default function Home() {
     );
   };
 
+  const ensureUser = useCallback(() => {
+    const uid = userId || getOrCreateUserId();
+
+    if (!userId && uid) {
+      setUserId(uid);
+    }
+
+    return uid;
+  }, [userId]);
+
   // 灵感 AI
   const generateInspirations =
     useCallback(async () => {
+      const uid = ensureUser();
+
       try {
         const response =
           await fetch(
@@ -437,7 +656,7 @@ export default function Home() {
               },
 
               body: JSON.stringify({
-                userId,
+                userId: uid,
                 mood: mood.join("、"),
                 mealTime,
                 memory: formatMemoryText(memory),
@@ -455,34 +674,53 @@ export default function Home() {
       } catch (error) {
         console.log(error);
       }
-    }, [mealTime, memory, mood, userId]);
+    }, [ensureUser, mealTime, memory, mood]);
 
   // 保存 memory
   const saveMemory = (
     newMemory: MemoryItem[]
   ) => {
-    setMemory(newMemory);
+    const uid = ensureUser();
+    const normalized = newMemory.map((item) => ({
+      ...item,
+      userId: item.userId || uid,
+    }));
 
-    localStorage.setItem(
-      "memory",
-      JSON.stringify(newMemory)
+    const saved = safeSetLocalStorage(
+      getUserStorageKey(uid, "memory"),
+      JSON.stringify(normalized)
     );
 
-    setInsights(buildInsights(newMemory));
+    if (!saved) {
+      toast.error("本地空间不足，记录没有保存成功");
+      return false;
+    }
+
+    setMemory(normalized);
+
+    setInsights(buildInsights(normalized));
+    return true;
   };
 
   // 保存菜单
   const saveMenu = (
     newMenu: string[]
   ) => {
+    const uid = ensureUser();
     const normalized = uniq(newMenu);
 
-    setMyMenu(normalized);
-
-    localStorage.setItem(
-      "myMenu",
+    const saved = safeSetLocalStorage(
+      getUserStorageKey(uid, "myMenu"),
       JSON.stringify(normalized)
     );
+
+    if (!saved) {
+      toast.error("本地空间不足，菜单没有保存成功");
+      return false;
+    }
+
+    setMyMenu(normalized);
+    return true;
   };
 
   // 添加菜
@@ -501,10 +739,10 @@ export default function Home() {
       dish,
     ];
 
-    saveMenu(updated);
-
-    setNewDish("");
-    toast.success("已加入我的菜单");
+    if (saveMenu(updated)) {
+      setNewDish("");
+      toast.success("已加入我的菜单");
+    }
   };
 
   // 删除菜
@@ -515,7 +753,9 @@ export default function Home() {
       (item) => item !== dish
     );
 
-    saveMenu(updated);
+    if (saveMenu(updated)) {
+      toast.success("已从菜单删除");
+    }
   };
 
   const spinFateBox = () => {
@@ -565,6 +805,7 @@ export default function Home() {
     retry = false,
     currentMemory?: MemoryItem[]
   ) => {
+    const uid = ensureUser();
     setLoading(true);
 
     const memorySource =
@@ -583,7 +824,7 @@ export default function Home() {
 
           body: JSON.stringify({
             mealTime,
-            userId,
+            userId: uid,
             mood: mood.join("、"),
             style: style.join("、"),
             retry,
@@ -616,9 +857,16 @@ export default function Home() {
 
   // 做饭 AI
   const generateCookAI =
-    async () => {
-      if (myMenu.length === 0)
+    async (availableIngredients?: string[]) => {
+      const uid = ensureUser();
+      const isIngredientMode =
+        Array.isArray(availableIngredients) &&
+        availableIngredients.length > 0;
+
+      if (myMenu.length === 0 && !isIngredientMode) {
+        toast.error("先添加几道你会做的菜");
         return;
+      }
 
       setCookLoading(true);
       setShowCookRecipe(false);
@@ -635,10 +883,11 @@ export default function Home() {
 
             body: JSON.stringify({
               mealTime,
-              userId,
+              userId: uid,
               mood: mood.join("、"),
               menu: myMenu,
               history: cookHistory,
+              availableIngredients,
               ...getClientContext(),
             }),
           });
@@ -650,6 +899,7 @@ export default function Home() {
           JSON.parse(cleanJson(data.result));
 
         setCookResult(parsed);
+        setPage("menu");
 
         setCookHistory((prev) => [
           ...prev,
@@ -664,24 +914,36 @@ export default function Home() {
     };
 
   // 接受推荐
-  const acceptFood = (imageUrl?: string) => {
+  const acceptFood = (photo?: {
+    imageId?: string;
+    imageUrl?: string;
+  }) => {
+    const uid = ensureUser();
     const updated: MemoryItem[] = [
       ...memory,
       {
         mealTime,
-        userId,
+        userId: uid,
         mood: mood.join("、"),
         style: style.join("、"),
         food,
         time: new Date().toISOString(),
+        timezone: getCurrentTimezone(),
+        timeUnknown: false,
         type: "like",
-        imageUrl,
+        imageId: photo?.imageId,
+        imageUrl: photo?.imageUrl,
       },
     ];
 
-    saveMemory(updated);
+    if (!saveMemory(updated)) {
+      return false;
+    }
 
     toast.success("今天终于不用纠结了");
+    setFood("");
+    setReason("");
+    return true;
   };
 
   const acceptFoodWithPhoto = async (
@@ -694,7 +956,18 @@ export default function Home() {
 
     try {
       const imageUrl = await compressImage(file);
-      acceptFood(imageUrl);
+      const imageId = await saveMealPhoto(imageUrl);
+
+      if (imageId) {
+        setPhotoUrls((prev) => ({
+          ...prev,
+          [imageId]: imageUrl,
+        }));
+        acceptFood({ imageId });
+      } else {
+        acceptFood();
+        toast.error("当前浏览器无法保存照片，已保存文字记录");
+      }
     } catch (error) {
       console.log(error);
       toast.error("照片处理失败，已保留文字记录");
@@ -712,33 +985,48 @@ export default function Home() {
       ...memory,
       {
         mealTime,
-        userId,
+        userId: ensureUser(),
         mood: mood.join("、"),
         style: style.join("、"),
         food,
         time: new Date().toISOString(),
+        timezone: getCurrentTimezone(),
+        timeUnknown: false,
         type: "dislike",
       },
     ];
 
-    saveMemory(updated);
-
-    generateFood(true, updated);
+    if (saveMemory(updated)) {
+      generateFood(true, updated);
+    }
   };
 
   const exportRecentMeals = async () => {
     setShareLoading(true);
 
     try {
-      const blob = await exportMealWall(
-        memory
-          .filter((item) => item.type === "like")
-          .map((item) => ({
-            food: item.food,
-            time: item.time,
-            imageUrl: item.imageUrl,
-          }))
+      const groups = await Promise.all(
+        groupMeals(memory).map(async (group) => ({
+          title: group.title,
+          items: await Promise.all(
+            group.items.map(async (item) => {
+              const storedImage =
+                getMemoryImageUrl(item, photoUrls) ??
+                (await readMealPhoto(item.imageId));
+
+              return {
+                food: item.food,
+                time: item.time,
+                timezone: item.timezone,
+                timeUnknown: item.timeUnknown,
+                imageUrl: storedImage,
+              };
+            })
+          ),
+        }))
       );
+
+      const blob = await exportMealWall(groups);
 
       await shareMealWall(blob);
       toast.success("饮食日记图片已生成");
@@ -759,6 +1047,7 @@ export default function Home() {
     if (!file) return;
 
     setIdentifyLoading(true);
+    setIdentifyResult(null);
 
     try {
       const imageDataUrl = await compressImage(file);
@@ -773,8 +1062,10 @@ export default function Home() {
         (await response.json()) as IdentifyResult;
 
       setIdentifyResult(result);
-      if (result.isDish) {
-        toast.success("识别完成");
+      if (result.kind === "dish") {
+        toast.success("识别到菜品");
+      } else if (result.kind === "ingredient") {
+        toast.success("识别到食材");
       } else {
         toast.error("这张图不像菜品，请换一张菜的照片");
       }
@@ -787,37 +1078,74 @@ export default function Home() {
   };
 
   const addIdentifiedDishToMenu = () => {
-    if (!identifyResult?.isDish) return;
+    if (identifyResult?.kind !== "dish") return;
 
     if (myMenu.includes(identifyResult.dish)) {
       toast.error("这道菜已经在菜单里了");
       return;
     }
 
-    saveMenu([...myMenu, identifyResult.dish]);
-    toast.success("已加入我的菜单");
+    if (saveMenu([...myMenu, identifyResult.dish])) {
+      toast.success("已加入我的菜单");
+    }
   };
 
   const useIdentifiedDishToday = () => {
-    if (!identifyResult?.isDish) return;
+    if (identifyResult?.kind !== "dish") return;
 
     setFood(identifyResult.dish);
     setReason(identifyResult.suggestion);
     setPage("today");
   };
 
+  const cookWithIdentifiedIngredients = () => {
+    if (
+      !identifyResult ||
+      identifyResult.kind === "non_food"
+    ) {
+      return;
+    }
+
+    if (identifyResult.ingredients.length === 0) {
+      toast.error("没有识别到可用食材");
+      return;
+    }
+
+    void generateCookAI(identifyResult.ingredients);
+  };
+
+  const pageTitle =
+    page === "menu"
+      ? "做啥？"
+      : page === "discover"
+        ? "灵感"
+        : page === "recent"
+          ? "饮食日记"
+          : "吃啥？";
+
+  const pageSubtitle =
+    page === "menu"
+      ? "今天在家就做这个。"
+      : page === "discover"
+        ? "换个角度，给今天一点吃饭灵感。"
+        : page === "recent"
+          ? "最近认真吃过的每一顿。"
+          : "今天终于不用纠结了。";
+
   return (
     <main className="app-shell min-h-screen pb-40">
       {/* 顶部 */}
       <div className="max-w-xl mx-auto px-6 pt-12">
         <h1 className="text-5xl font-semibold tracking-tight">
-          {page === "menu" ? "做啥？" : "吃啥？"}
+          {pageTitle}
         </h1>
 
         <p className="muted-text mt-3 leading-7">
-          {page === "menu"
-            ? "今天在家就做这个。"
-            : "今天终于不用纠结了。"}
+          {pageSubtitle}
+        </p>
+
+        <p className="text-xs text-gray-400 mt-3">
+          用户 ID：{shortUserId(userId)}
         </p>
       </div>
 
@@ -1071,36 +1399,19 @@ export default function Home() {
           <div id="meal-wall">
             {groupMeals(memory).map((group) => (
               <section key={group.title}>
-              <h3 className="text-sm text-gray-400 mb-3">
-                {group.title}
-              </h3>
+                <h3 className="text-sm text-gray-400 mb-3">
+                  {group.title}
+                </h3>
 
-              <div className="columns-2 gap-3">
-                {group.items.map((item) => (
-                  <div
-                    key={`${item.food}-${item.time}`}
-                    className="mb-3 break-inside-avoid surface-card overflow-hidden"
-                  >
-                    {item.imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.imageUrl}
-                        alt={item.food}
-                        className="w-full object-cover"
-                      />
-                    )}
-
-                    <div className="p-4">
-                      <h4 className="font-semibold leading-tight">
-                        {item.food}
-                      </h4>
-                      <p className="text-xs muted-text mt-2">
-                        {formatDateTime(item.time)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                <div className="columns-2 gap-3">
+                  {group.items.map((item) => (
+                    <MealCard
+                      key={`${item.food}-${item.time}`}
+                      item={item}
+                      photoUrls={photoUrls}
+                    />
+                  ))}
+                </div>
               </section>
             ))}
           </div>
@@ -1156,8 +1467,8 @@ export default function Home() {
                   </button>
 
                   <button
-                    onClick={
-                      generateCookAI
+                    onClick={() =>
+                      void generateCookAI()
                     }
                     className="secondary-button flex-1 py-3"
                   >
@@ -1223,8 +1534,8 @@ export default function Home() {
                 )}
 
                 <button
-                  onClick={
-                    generateCookAI
+                  onClick={() =>
+                    void generateCookAI()
                   }
                   disabled={
                     myMenu.length === 0 || cookLoading
@@ -1257,7 +1568,9 @@ export default function Home() {
                         return;
                       }
 
-                      saveMenu([...myMenu, dish]);
+                      if (saveMenu([...myMenu, dish])) {
+                        toast.success("已加入我的菜单");
+                      }
                     }}
                     disabled={myMenu.includes(dish)}
                     className="quick-dish-button disabled:opacity-35"
@@ -1328,10 +1641,10 @@ export default function Home() {
 
           <div className="surface-card p-8">
             <h2 className="text-3xl font-semibold leading-tight">
-              拍照识菜
+              拍照识菜/识材
             </h2>
             <p className="muted-text mt-5 leading-8">
-              只识别菜品和餐食，识别后可以加入我的菜单。
+              只识别菜品、餐食和常见食材，识别后可以加入菜单或按食材做菜。
             </p>
 
             <label className="primary-button mt-6 block text-center py-4 cursor-pointer">
@@ -1363,20 +1676,76 @@ export default function Home() {
                   {identifyResult.suggestion}
                 </p>
 
-                {identifyResult.isDish && (
-                  <div className="flex gap-3 mt-5">
+                {identifyResult.ingredients.length > 0 && (
+                  <div className="mt-5">
+                    <p className="text-sm text-gray-400 mb-3">
+                      识别到的食材
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {identifyResult.ingredients.map(
+                        (item) => (
+                          <span
+                            key={item}
+                            className="recipe-chip"
+                          >
+                            {item}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {identifyResult.cookableDishes.length > 0 && (
+                  <div className="mt-5 space-y-3">
+                    <p className="text-sm text-gray-400">
+                      可做菜品参考
+                    </p>
+                    {identifyResult.cookableDishes.map(
+                      (item) => (
+                        <div
+                          key={item.dish}
+                          className="recipe-suggestion p-4"
+                        >
+                          <h4 className="font-semibold">
+                            {item.dish}
+                          </h4>
+                          <p className="muted-text mt-2 leading-7">
+                            {item.reason}
+                          </p>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+
+                {identifyResult.kind !==
+                  "non_food" && (
+                  <div className="grid grid-cols-1 gap-3 mt-5 sm:grid-cols-3">
+                    {identifyResult.kind === "dish" && (
+                      <button
+                        onClick={
+                          addIdentifiedDishToMenu
+                        }
+                        className="primary-button py-3"
+                      >
+                        加入菜单
+                      </button>
+                    )}
                     <button
-                      onClick={addIdentifiedDishToMenu}
-                      className="primary-button flex-1 py-3"
+                      onClick={cookWithIdentifiedIngredients}
+                      className="secondary-button py-3"
                     >
-                      加入菜单
+                      用食材做菜
                     </button>
-                    <button
-                      onClick={useIdentifiedDishToday}
-                      className="secondary-button flex-1 py-3"
-                    >
-                      今天就吃
-                    </button>
+                    {identifyResult.kind === "dish" && (
+                      <button
+                        onClick={useIdentifiedDishToday}
+                        className="secondary-button py-3"
+                      >
+                        今天就吃
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1441,16 +1810,16 @@ export default function Home() {
 
             <button
               onClick={() =>
-                setPage("recent")
+                setPage("discover")
               }
               className={`tab-item ${
-                page === "recent"
+                page === "discover"
                   ? "tab-item-active"
                   : ""
               }`}
             >
               <span className="tab-dot" />
-              最近
+              灵感
             </button>
 
             <button
@@ -1469,16 +1838,16 @@ export default function Home() {
 
             <button
               onClick={() =>
-                setPage("discover")
+                setPage("recent")
               }
               className={`tab-item ${
-                page === "discover"
+                page === "recent"
                   ? "tab-item-active"
                   : ""
               }`}
             >
               <span className="tab-dot" />
-              灵感
+              饮食日记
             </button>
           </div>
         </div>

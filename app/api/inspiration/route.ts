@@ -1,4 +1,5 @@
 import { createAiClient, getAiModel } from "@/lib/ai";
+import { cleanJson } from "@/lib/prompt-harness";
 import { z } from "zod";
 
 const CACHE_TTL = 10 * 60 * 1000;
@@ -10,6 +11,13 @@ type CacheEntry = {
 
 const inspirationCache = new Map<string, CacheEntry>();
 
+const InspirationRequestSchema = z.object({
+  userId: z.string().min(1),
+  mood: z.string().optional(),
+  mealTime: z.string().optional(),
+  memory: z.array(z.string()).optional(),
+});
+
 const InspirationSchema = z
   .array(
     z.object({
@@ -18,13 +26,6 @@ const InspirationSchema = z
     })
   )
   .min(1);
-
-const cleanJson = (value: string) =>
-  value
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
 
 const fallbackInspirations = [
   {
@@ -78,16 +79,21 @@ const parseInspirations = (text: string) => {
 export async function POST(req: Request) {
   try {
     const {
+      userId,
       mood,
       mealTime,
       memory,
-    } = await req.json();
-    const memoryList = Array.isArray(memory)
-      ? memory
-      : [];
+    } = InspirationRequestSchema.parse(await req.json());
+    const memoryList = memory ?? [];
+    const memoryDigest = memoryList
+      .slice(-12)
+      .join("|")
+      .slice(0, 1200);
     const cacheKey = JSON.stringify({
+      userId,
       mood,
       mealTime,
+      memoryDigest,
     });
     const cached = inspirationCache.get(cacheKey);
 
@@ -95,6 +101,10 @@ export async function POST(req: Request) {
       return Response.json({
         result: cached.result,
         cached: true,
+      }, {
+        headers: {
+          "Cache-Control": "no-store",
+        },
       });
     }
 
@@ -199,6 +209,10 @@ ${memoryList.join("、")}
     return Response.json({
       result: normalizedResult,
       cached: false,
+    }, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
     });
   } catch (error) {
     console.log(error);
@@ -206,6 +220,10 @@ ${memoryList.join("、")}
     return Response.json({
       result: JSON.stringify(fallbackInspirations),
       cached: false,
+    }, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
     });
   }
 }
