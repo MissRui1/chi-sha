@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createAiClient, getAiModel } from "@/lib/ai";
+import { runJsonPrompt } from "@/lib/prompt-harness";
 
 type RecommendationRules = {
   bannedFoods: string[];
@@ -44,6 +45,8 @@ const RecommendRequestSchema = z.object({
   previousFood: z.string().optional(),
   history: z.array(z.string()).optional(),
   memory: z.array(MemorySchema).optional(),
+  currentTime: z.string().optional(),
+  timezone: z.string().optional(),
 });
 
 const RecommendSchema = z.object({
@@ -68,22 +71,12 @@ const normalizeList = (
     : [fallback];
 };
 
-const cleanJson = (str: string) =>
-  str
-    .replace(/^```json\n?/, "")
-    .replace(/^```\n?/, "")
-    .replace(/```$/, "")
-    .trim();
-
-const parseRecommendation = (
-  text: string,
+const validateRecommendation = (
+  parsed: z.infer<typeof RecommendSchema>,
   rules: RecommendationRules,
-  mealTime: string
+  mealTime: string,
+  history: string[]
 ) => {
-  const parsed = RecommendSchema.parse(
-    JSON.parse(cleanJson(text))
-  );
-
   if (mealTime !== "奶茶") {
     const banned = rules.bannedFoods.find(
       (food) =>
@@ -98,7 +91,15 @@ const parseRecommendation = (
     }
   }
 
-  return parsed;
+  const repeated = history.find((food) =>
+    food && parsed.food.includes(food)
+  );
+
+  if (repeated) {
+    throw new Error(
+      `AI repeated existing history: ${repeated}`
+    );
+  }
 };
 
 const generateRules = (
@@ -275,17 +276,50 @@ const generateRules = (
 
 type TimeContext = {
   hour: number;
+  minute: number;
+  second: number;
   dayOfWeek: number;
   month: number;
+  localText: string;
   timeOfDay: "早餐" | "下午" | "深夜" | "正餐";
   dayName: string;
 };
 
-const getTimeInfo = (): TimeContext => {
-  const now = new Date();
-  const hour = now.getHours();
-  const dayOfWeek = now.getDay();
-  const month = now.getMonth() + 1;
+const readNumberPart = (
+  parts: Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPartTypes
+) =>
+  Number(
+    parts.find((part) => part.type === type)?.value ?? 0
+  );
+
+const getTimeInfo = (
+  currentTime?: string,
+  timezone = "Asia/Shanghai"
+): TimeContext => {
+  const now = currentTime
+    ? new Date(currentTime)
+    : new Date();
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+
+  const hour = readNumberPart(parts, "hour");
+  const minute = readNumberPart(parts, "minute");
+  const second = readNumberPart(parts, "second");
+  const month = readNumberPart(parts, "month");
+  const dayName =
+    parts.find((part) => part.type === "weekday")
+      ?.value ?? "今天";
 
   const dayNames = [
     "周日",
@@ -296,6 +330,7 @@ const getTimeInfo = (): TimeContext => {
     "周五",
     "周六",
   ];
+  const dayOfWeek = Math.max(0, dayNames.indexOf(dayName));
 
   let timeOfDay: TimeContext["timeOfDay"] =
     "正餐";
@@ -310,10 +345,22 @@ const getTimeInfo = (): TimeContext => {
 
   return {
     hour,
+    minute,
+    second,
     dayOfWeek,
     month,
+    localText: new Intl.DateTimeFormat("zh-CN", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(now),
     timeOfDay,
-    dayName: dayNames[dayOfWeek],
+    dayName,
   };
 };
 
@@ -343,7 +390,12 @@ const generateContext = (
   const contextParts: string[] = [];
 
   contextParts.push("【场景信息】");
-  contextParts.push(`${timeInfo.dayName} ${timeInfo.hour}点`);
+  contextParts.push(
+    `真实当前时间：${timeInfo.localText} ${timeInfo.dayName}`
+  );
+  contextParts.push(
+    `真实时段判断：${timeInfo.timeOfDay}（${timeInfo.hour}:${String(timeInfo.minute).padStart(2, "0")}:${String(timeInfo.second).padStart(2, "0")}）`
+  );
 
   let mealTimeDesc = "";
 
@@ -376,6 +428,10 @@ const generateContext = (
   if (mealTimeDesc) {
     contextParts.push(mealTimeDesc);
   }
+
+  contextParts.push(
+    `用户手动选择的目标餐次：${mealTime}。如果它和真实时段不一致，推荐仍以用户选择为主，但理由里不能写错真实时间。`
+  );
 
   if (timeInfo.dayOfWeek === 5) {
     contextParts.push(
@@ -505,39 +561,35 @@ export async function POST(req: Request) {
       mealTime,
       body.retry ? body.previousFood : undefined
     );
+    const history = body.history ?? [];
     const contextPrompt = generateContext(
-      getTimeInfo(),
+      getTimeInfo(body.currentTime, body.timezone),
       mealTime
     );
     const historyText =
-      body.history?.join("、") || "暂无";
+      history.join("、") || "暂无";
     const retryText =
       body.retry && body.previousFood
         ? `用户刚刚拒绝了：${body.previousFood}，必须推荐明显不同的食物。`
         : "";
 
     const systemPrompt = `
-你不是普通美食推荐器。
+你是“吃啥”的推荐决策引擎，只负责输出可执行的一餐建议。
 
-你是一个真正懂生活、懂情绪、懂体感、懂时间场景的 AI Food Companion。
+质量准则：
+1. 严格依据真实当前时间、用户手动选择的餐次、用户状态、想吃类型、近期喜欢/拒绝记录综合判断。
+2. 如果真实时间与用户选择不一致，不能编造时间；理由要自然地体现“按用户选择来，但知道现在真实时段”。
+3. 食物必须现实可获得、名称具体，不输出抽象类别。
+4. 理由 36-90 个中文字符，直接、生活化、无鸡汤、无平台广告感。
+5. 禁止重复已推荐、已拒绝或本次换一换前的食物。
+6. 只返回 JSON，不要 markdown，不要额外字段。
 
-推荐必须：
-- 有真实生活感
-- 真正现实可吃到
-- 不像外卖平台
-- 不模板化
-- 符合现实体感
+奶茶专属：
+- mealTime 为“奶茶”时 food 只能是具体茶饮名称。
+- reason 必须包含糖度/温度/配料建议，不得推荐饭菜或小吃。
 
-当 mealTime 为"奶茶"时：
-- food 字段返回奶茶、果茶或茶饮名称，例如"茉莉奶绿"
-- reason 字段给出糖度、温度、配料建议
-- 不要推荐饭菜、小吃或正餐
-
-如果用户选择"想吃凉快的"，凉快代表清爽、降温感、解腻、不厚重、不燥热、不刺激。
-
-如果用户点击"换一换"，必须明显不同，不能重复、同类、相似做法或相似口味。
-
-只返回 JSON，不要添加 markdown 标记。`;
+凉快专属：
+- 用户状态包含“想吃凉快的”时，必须清爽、降温、解腻，禁止热汤、火锅、麻辣烫、烧烤、重油重辣。`;
 
     const userPrompt = `
 ${contextPrompt}
@@ -586,54 +638,34 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
     const client = createAiClient();
     const model = getAiModel();
 
-    const temperature = getTemperature(mealTime);
-    let lastText = "";
-
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const completion =
-        await client.chat.completions.create({
-          model,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt,
-            },
-            {
-              role: "user",
-              content:
-                attempt === 0
-                  ? userPrompt
-                  : `${userPrompt}\n\n请严格按照 JSON 格式返回，不要加任何 markdown 标记。`,
-            },
-          ],
-          temperature,
-        });
-
-      lastText =
-        completion.choices[0]?.message
-          ?.content ?? "";
-
-      try {
-        const parsed = parseRecommendation(
-          lastText,
+    const parsed = await runJsonPrompt({
+      client,
+      model,
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ],
+      schema: RecommendSchema,
+      fallback: fallbackRecommendation(mealTime, moodList),
+      temperature: getTemperature(mealTime),
+      maxAttempts: 3,
+      validate: (value) =>
+        validateRecommendation(
+          value,
           rules,
-          mealTime
-        );
-
-        return Response.json({
-          result: JSON.stringify(parsed),
-        });
-      } catch (error) {
-        console.log(error);
-      }
-    }
-
-    console.log("Invalid AI response:", lastText);
+          mealTime,
+          history
+        ),
+    });
 
     return Response.json({
-      result: JSON.stringify(
-        fallbackRecommendation(mealTime, moodList)
-      ),
+      result: JSON.stringify(parsed),
     });
   } catch (error) {
     console.log(error);

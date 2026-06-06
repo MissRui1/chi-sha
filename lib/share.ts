@@ -7,21 +7,17 @@ type ShareMeal = {
 };
 
 export async function exportMealWall(
-  elementId: string,
   fallbackMeals: ShareMeal[]
 ): Promise<Blob> {
-  const element =
-    document.getElementById(elementId) ??
-    createFallbackWall(fallbackMeals);
+  const element = createFallbackWall(fallbackMeals);
+
   const canvas = await html2canvas(element, {
     backgroundColor: "#f5f5f7",
     scale: 2,
     useCORS: true,
   });
 
-  if (!document.getElementById(elementId)) {
-    element.remove();
-  }
+  element.remove();
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -43,6 +39,8 @@ const createFallbackWall = (meals: ShareMeal[]) => {
   container.style.padding = "32px";
   container.style.background = "#f5f5f7";
   container.style.color = "#111111";
+  container.style.fontFamily =
+    "Arial, Helvetica, sans-serif";
   container.innerHTML = `
     <h1 style="font-size:32px;margin:0 0 8px;">吃啥 · 饮食日记</h1>
     <p style="color:#666;margin:0 0 24px;">最近认真吃过的每一顿</p>
@@ -51,9 +49,9 @@ const createFallbackWall = (meals: ShareMeal[]) => {
         ? meals
             .map(
               (meal) => `
-              <div style="background:white;border-radius:18px;padding:18px;margin-bottom:12px;">
+              <div style="background:white;border-radius:18px;padding:18px;margin-bottom:12px;border:1px solid rgba(0,0,0,.06);">
                 <strong style="font-size:22px;">${meal.food}</strong>
-                <p style="color:#777;margin:8px 0 0;">${new Date(meal.time).toLocaleDateString("zh-CN")}</p>
+                <p style="color:#777;margin:8px 0 0;">${formatShareTime(meal.time)}</p>
               </div>
             `
             )
@@ -64,6 +62,17 @@ const createFallbackWall = (meals: ShareMeal[]) => {
   document.body.appendChild(container);
   return container;
 };
+
+const formatShareTime = (value: string) =>
+  new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
 
 export async function shareMealWall(blob: Blob) {
   const file = new File(
@@ -84,6 +93,8 @@ export async function shareMealWall(blob: Blob) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = file.name;
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
   URL.revokeObjectURL(url);
 }

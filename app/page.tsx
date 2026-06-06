@@ -27,8 +27,17 @@ type MemoryItem = {
 };
 
 type IdentifyResult = {
+  isDish: boolean;
   dish: string;
   suggestion: string;
+};
+
+type CookResult = {
+  dish: string;
+  reason: string;
+  ingredients: string[];
+  steps: string[];
+  tips: string;
 };
 
 type FateResult = {
@@ -36,6 +45,19 @@ type FateResult = {
   reason: string;
   source: string;
 };
+
+const defaultMenuDishes = [
+  "番茄炒蛋",
+  "青椒土豆丝",
+  "可乐鸡翅",
+  "红烧排骨",
+  "宫保鸡丁",
+  "鱼香肉丝",
+  "麻婆豆腐",
+  "西红柿牛腩",
+  "清炒时蔬",
+  "紫菜蛋花汤",
+];
 
 const fateFallbackFoods = [
   "番茄牛腩饭",
@@ -50,6 +72,43 @@ const fateFallbackFoods = [
 
 const pickRandom = <T,>(items: T[]) =>
   items[Math.floor(Math.random() * items.length)];
+
+const uniq = (items: string[]) =>
+  items
+    .map((item) => item.trim())
+    .filter(
+      (item, index, arr) =>
+        item && arr.indexOf(item) === index
+    );
+
+const getClientContext = () => ({
+  currentTime: new Date().toISOString(),
+  timezone:
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    "Asia/Shanghai",
+});
+
+const inferMealTime = () => {
+  const hour = new Date().getHours();
+
+  if (hour >= 5 && hour < 10) return "早餐";
+  if (hour >= 10 && hour < 15) return "午餐";
+  if (hour >= 15 && hour < 17) return "奶茶";
+  if (hour >= 22 || hour < 5) return "夜宵";
+
+  return "晚餐";
+};
+
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
 
 const ResultSkeleton = ({
   className = "",
@@ -206,7 +265,7 @@ const readMenu = (): string[] => {
       localStorage.getItem("myMenu");
 
     if (!savedMenu) {
-      return [];
+      return defaultMenuDishes;
     }
 
     const parsed = JSON.parse(savedMenu);
@@ -276,7 +335,7 @@ export default function Home() {
   const [page, setPage] = useState("today");
 
   const [mealTime, setMealTime] =
-    useState("晚餐");
+    useState(inferMealTime);
 
   const [mood, setMood] =
     useState<string[]>(["奖励自己"]);
@@ -322,11 +381,11 @@ export default function Home() {
     useState("");
 
   // 做饭 AI
-  const [cookSuggestion, setCookSuggestion] =
-    useState("");
+  const [cookResult, setCookResult] =
+    useState<CookResult | null>(null);
 
-  const [cookReason, setCookReason] =
-    useState("");
+  const [showCookRecipe, setShowCookRecipe] =
+    useState(false);
 
   const [cookHistory, setCookHistory] =
     useState<string[]>([]);
@@ -416,11 +475,13 @@ export default function Home() {
   const saveMenu = (
     newMenu: string[]
   ) => {
-    setMyMenu(newMenu);
+    const normalized = uniq(newMenu);
+
+    setMyMenu(normalized);
 
     localStorage.setItem(
       "myMenu",
-      JSON.stringify(newMenu)
+      JSON.stringify(normalized)
     );
   };
 
@@ -527,6 +588,7 @@ export default function Home() {
             style: style.join("、"),
             retry,
             previousFood: food,
+            ...getClientContext(),
             history: memorySource
               .filter((item) => item.type === "like")
               .map((item) => item.food),
@@ -559,6 +621,7 @@ export default function Home() {
         return;
 
       setCookLoading(true);
+      setShowCookRecipe(false);
 
       try {
         const response =
@@ -576,6 +639,7 @@ export default function Home() {
               mood: mood.join("、"),
               menu: myMenu,
               history: cookHistory,
+              ...getClientContext(),
             }),
           });
 
@@ -585,13 +649,7 @@ export default function Home() {
         const parsed =
           JSON.parse(cleanJson(data.result));
 
-        setCookSuggestion(
-          parsed.dish
-        );
-
-        setCookReason(
-          parsed.reason
-        );
+        setCookResult(parsed);
 
         setCookHistory((prev) => [
           ...prev,
@@ -673,7 +731,6 @@ export default function Home() {
 
     try {
       const blob = await exportMealWall(
-        "meal-wall",
         memory
           .filter((item) => item.type === "like")
           .map((item) => ({
@@ -716,7 +773,11 @@ export default function Home() {
         (await response.json()) as IdentifyResult;
 
       setIdentifyResult(result);
-      toast.success("识别完成");
+      if (result.isDish) {
+        toast.success("识别完成");
+      } else {
+        toast.error("这张图不像菜品，请换一张菜的照片");
+      }
     } catch (error) {
       console.log(error);
       toast.error("识菜失败，请换张清晰照片");
@@ -725,16 +786,38 @@ export default function Home() {
     }
   };
 
+  const addIdentifiedDishToMenu = () => {
+    if (!identifyResult?.isDish) return;
+
+    if (myMenu.includes(identifyResult.dish)) {
+      toast.error("这道菜已经在菜单里了");
+      return;
+    }
+
+    saveMenu([...myMenu, identifyResult.dish]);
+    toast.success("已加入我的菜单");
+  };
+
+  const useIdentifiedDishToday = () => {
+    if (!identifyResult?.isDish) return;
+
+    setFood(identifyResult.dish);
+    setReason(identifyResult.suggestion);
+    setPage("today");
+  };
+
   return (
     <main className="app-shell min-h-screen pb-40">
       {/* 顶部 */}
       <div className="max-w-xl mx-auto px-6 pt-12">
         <h1 className="text-5xl font-semibold tracking-tight">
-          吃啥？
+          {page === "menu" ? "做啥？" : "吃啥？"}
         </h1>
 
         <p className="muted-text mt-3 leading-7">
-          今天终于不用纠结了。
+          {page === "menu"
+            ? "今天在家就做这个。"
+            : "今天终于不用纠结了。"}
         </p>
       </div>
 
@@ -849,6 +932,64 @@ export default function Home() {
             </button>
           </div>
 
+          <button
+            onClick={spinFateBox}
+            disabled={fateLoading}
+            className="fate-card mt-6 w-full text-left p-8"
+          >
+            <div className="flex items-center justify-between gap-5">
+              <div>
+                <p className="text-sm opacity-70 mb-3">
+                  转盘盲盒模式
+                </p>
+                <h2 className="text-3xl font-semibold leading-tight">
+                  完全交给命运
+                </h2>
+                <p className="mt-4 leading-8 opacity-80">
+                  从菜单、日记和随机池里抽一道，停在哪道就吃哪道。
+                </p>
+              </div>
+
+              <motion.div
+                animate={
+                  fateLoading
+                    ? { rotate: 1080 }
+                    : { rotate: 0 }
+                }
+                transition={{
+                  duration: 1.25,
+                  ease: "easeInOut",
+                }}
+                className="fate-wheel shrink-0"
+              >
+                <span />
+              </motion.div>
+            </div>
+          </button>
+
+          {fateLoading && (
+            <div className="surface-card mt-6 p-8">
+              <InlineSkeleton />
+            </div>
+          )}
+
+          {fateResult && !fateLoading && (
+            <button
+              onClick={acceptFateResult}
+              className="surface-card pressable mt-6 w-full text-left p-8"
+            >
+              <p className="text-sm text-gray-400 mb-3">
+                {fateResult.source}
+              </p>
+              <h2 className="text-4xl font-semibold tracking-tight">
+                {fateResult.food}
+              </h2>
+              <p className="muted-text mt-5 leading-8">
+                点一下就把它放进今天的推荐结果。
+              </p>
+            </button>
+          )}
+
           {loading && <ResultSkeleton className="mt-8" />}
 
           {/* 推荐结果 */}
@@ -954,11 +1095,7 @@ export default function Home() {
                         {item.food}
                       </h4>
                       <p className="text-xs muted-text mt-2">
-                        {new Date(
-                          item.time
-                        ).toLocaleDateString(
-                          "zh-CN"
-                        )}
+                        {formatDateTime(item.time)}
                       </p>
                     </div>
                   </div>
@@ -998,20 +1135,20 @@ export default function Home() {
               今晚做什么
             </p>
 
-            {cookSuggestion ? (
+            {cookResult ? (
               <>
                 <h2 className="text-4xl font-semibold tracking-tight">
-                  {cookSuggestion}
+                  {cookResult.dish}
                 </h2>
 
                 <p className="muted-text mt-5 leading-8">
-                  {cookReason}
+                  {cookResult.reason}
                 </p>
 
                 <div className="flex gap-4 mt-8">
                   <button
                     onClick={() =>
-                      toast.success("今晚就做这个")
+                      setShowCookRecipe(true)
                     }
                     className="primary-button flex-1 py-3"
                   >
@@ -1027,6 +1164,51 @@ export default function Home() {
                     换一个
                   </button>
                 </div>
+
+                {showCookRecipe && (
+                  <div className="inset-card mt-6 p-5 space-y-5">
+                    <div>
+                      <h3 className="font-semibold mb-3">
+                        食材
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {cookResult.ingredients.map(
+                          (item) => (
+                            <span
+                              key={item}
+                              className="recipe-chip"
+                            >
+                              {item}
+                            </span>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold mb-3">
+                        做法
+                      </h3>
+                      <ol className="space-y-3">
+                        {cookResult.steps.map(
+                          (step, index) => (
+                            <li
+                              key={step}
+                              className="recipe-step"
+                            >
+                              <span>{index + 1}</span>
+                              <p>{step}</p>
+                            </li>
+                          )
+                        )}
+                      </ol>
+                    </div>
+
+                    <p className="muted-text leading-7">
+                      {cookResult.tips}
+                    </p>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -1060,6 +1242,31 @@ export default function Home() {
             <p className="text-sm text-gray-400 mb-5">
               我的菜
             </p>
+
+            <div className="mb-6">
+              <p className="text-sm text-gray-400 mb-3">
+                家常菜快捷添加
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {defaultMenuDishes.map((dish) => (
+                  <button
+                    key={dish}
+                    onClick={() => {
+                      if (myMenu.includes(dish)) {
+                        toast.error("这道菜已经在菜单里了");
+                        return;
+                      }
+
+                      saveMenu([...myMenu, dish]);
+                    }}
+                    disabled={myMenu.includes(dish)}
+                    className="quick-dish-button disabled:opacity-35"
+                  >
+                    {dish}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="flex gap-3 mb-6">
               <input
@@ -1118,76 +1325,13 @@ export default function Home() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* 灵感 */}
-      {page === "discover" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-5">
-          <button
-            onClick={spinFateBox}
-            disabled={fateLoading}
-            className="fate-card w-full text-left p-8"
-          >
-            <div className="flex items-center justify-between gap-5">
-              <div>
-                <p className="text-sm opacity-70 mb-3">
-                  转盘盲盒模式
-                </p>
-                <h2 className="text-3xl font-semibold leading-tight">
-                  完全交给命运
-                </h2>
-                <p className="mt-4 leading-8 opacity-80">
-                  把菜单、日记和一点随机性丢进转盘，停在哪道就吃哪道。
-                </p>
-              </div>
-
-              <motion.div
-                animate={
-                  fateLoading
-                    ? { rotate: 1080 }
-                    : { rotate: 0 }
-                }
-                transition={{
-                  duration: 1.25,
-                  ease: "easeInOut",
-                }}
-                className="fate-wheel shrink-0"
-              >
-                <span />
-              </motion.div>
-            </div>
-          </button>
-
-          {fateLoading && (
-            <div className="surface-card p-8">
-              <InlineSkeleton />
-            </div>
-          )}
-
-          {fateResult && !fateLoading && (
-            <button
-              onClick={acceptFateResult}
-              className="surface-card pressable w-full text-left p-8"
-            >
-              <p className="text-sm text-gray-400 mb-3">
-                {fateResult.source}
-              </p>
-              <h2 className="text-4xl font-semibold tracking-tight">
-                {fateResult.food}
-              </h2>
-              <p className="muted-text mt-5 leading-8">
-                点一下就回到首页，今天不用再纠结。
-              </p>
-            </button>
-          )}
 
           <div className="surface-card p-8">
             <h2 className="text-3xl font-semibold leading-tight">
               拍照识菜
             </h2>
             <p className="muted-text mt-5 leading-8">
-              看到想吃的，拍一下，让 AI 帮你认出来。
+              只识别菜品和餐食，识别后可以加入我的菜单。
             </p>
 
             <label className="primary-button mt-6 block text-center py-4 cursor-pointer">
@@ -1201,17 +1345,14 @@ export default function Home() {
               />
             </label>
 
+            {identifyLoading && (
+              <div className="mt-6">
+                <InlineSkeleton />
+              </div>
+            )}
+
             {identifyResult && (
-              <button
-                onClick={() => {
-                  setFood(identifyResult.dish);
-                  setReason(
-                    identifyResult.suggestion
-                  );
-                  setPage("today");
-                }}
-                className="mt-6 w-full text-left inset-card p-5"
-              >
+              <div className="mt-6 inset-card p-5">
                 <p className="text-sm text-gray-400 mb-2">
                   识别结果
                 </p>
@@ -1221,16 +1362,32 @@ export default function Home() {
                 <p className="muted-text mt-3 leading-7">
                   {identifyResult.suggestion}
                 </p>
-              </button>
+
+                {identifyResult.isDish && (
+                  <div className="flex gap-3 mt-5">
+                    <button
+                      onClick={addIdentifiedDishToMenu}
+                      className="primary-button flex-1 py-3"
+                    >
+                      加入菜单
+                    </button>
+                    <button
+                      onClick={useIdentifiedDishToday}
+                      className="secondary-button flex-1 py-3"
+                    >
+                      今天就吃
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
+        </div>
+      )}
 
-          {identifyLoading && (
-            <div className="surface-card p-8">
-              <InlineSkeleton />
-            </div>
-          )}
-
+      {/* 灵感 */}
+      {page === "discover" && (
+        <div className="max-w-xl mx-auto px-6 mt-10 space-y-5">
           <button
             onClick={() =>
               void generateInspirations()

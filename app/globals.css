@@ -176,6 +176,53 @@ input:focus-visible {
   transform: translateY(-1px);
 }
 
+.quick-dish-button,
+.recipe-chip {
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  padding: 0.45rem 0.85rem;
+}
+
+.quick-dish-button {
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.quick-dish-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+  transform: translateY(-1px);
+}
+
+.recipe-step {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.recipe-step span {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.recipe-step p {
+  color: var(--muted);
+  line-height: 1.75rem;
+}
+
 .fate-card {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--fate-a) 92%, transparent), var(--fate-b)),
