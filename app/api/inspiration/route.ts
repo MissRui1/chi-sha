@@ -13,7 +13,7 @@ const inspirationCache = new Map<string, CacheEntry>();
 
 const InspirationRequestSchema = z.object({
   userId: z.string().min(1),
-  mood: z.string().max(160).optional(),
+  mood: z.string().max(600).optional(),
   mealTime: z.string().max(20).optional(),
   memory: z.array(z.string().max(160)).max(120).optional(),
   nonce: z.string().max(40).optional(),

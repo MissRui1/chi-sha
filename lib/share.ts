@@ -20,7 +20,7 @@ export async function exportMealWall(
   await waitForImages(element);
 
   const canvas = await html2canvas(element, {
-    backgroundColor: "#f5f5f7",
+    backgroundColor: "#f4f6f2",
     scale: 2,
     useCORS: true,
   });
@@ -70,27 +70,46 @@ const createFallbackWall = (
   container.style.top = "0";
   container.style.width = "540px";
   container.style.padding = "32px";
-  container.style.background = "#f5f5f7";
-  container.style.color = "#111111";
+  container.style.background = "#f4f6f2";
+  container.style.color = "#20231f";
   container.style.fontFamily =
     "Arial, Helvetica, sans-serif";
+  container.style.borderRadius = "28px";
+
+  const hero = document.createElement("div");
+  hero.style.background = "#263329";
+  hero.style.color = "#f8faf6";
+  hero.style.borderRadius = "24px";
+  hero.style.padding = "24px";
+  hero.style.marginBottom = "18px";
+  container.appendChild(hero);
+
+  const eyebrow = document.createElement("p");
+  eyebrow.textContent = "吃啥 · 饮食日记";
+  eyebrow.style.color = "rgba(248,250,246,.68)";
+  eyebrow.style.fontSize = "13px";
+  eyebrow.style.letterSpacing = "0";
+  eyebrow.style.margin = "0 0 10px";
+  hero.appendChild(eyebrow);
 
   const title = document.createElement("h1");
-  title.textContent = "吃啥 · 饮食日记";
+  title.textContent = "最近认真吃过的每一顿";
   title.style.fontSize = "32px";
-  title.style.margin = "0 0 8px";
-  container.appendChild(title);
+  title.style.lineHeight = "1.15";
+  title.style.margin = "0";
+  hero.appendChild(title);
 
   const desc = document.createElement("p");
-  desc.textContent = "最近认真吃过的每一顿";
-  desc.style.color = "#666";
-  desc.style.margin = "0 0 24px";
-  container.appendChild(desc);
+  desc.textContent = `${mealCount} 条记录 · 精确到秒`;
+  desc.style.color = "rgba(248,250,246,.78)";
+  desc.style.margin = "14px 0 0";
+  hero.appendChild(desc);
 
   if (mealCount === 0) {
     const empty = document.createElement("div");
     empty.textContent = "还没有记录";
-    empty.style.background = "white";
+    empty.style.background = "#ffffff";
+    empty.style.border = "1px solid rgba(47,68,48,.11)";
     empty.style.borderRadius = "18px";
     empty.style.padding = "18px";
     container.appendChild(empty);
@@ -103,18 +122,20 @@ const createFallbackWall = (
 
     const groupTitle = document.createElement("h2");
     groupTitle.textContent = group.title;
-    groupTitle.style.color = "#777";
-    groupTitle.style.fontSize = "14px";
+    groupTitle.style.color = "#687063";
+    groupTitle.style.fontSize = "13px";
+    groupTitle.style.fontWeight = "800";
     groupTitle.style.margin = "20px 0 10px";
     container.appendChild(groupTitle);
 
     group.items.forEach((meal) => {
       const card = document.createElement("div");
-      card.style.background = "white";
-      card.style.borderRadius = "18px";
+      card.style.background = "#ffffff";
+      card.style.borderRadius = "20px";
       card.style.padding = "18px";
       card.style.marginBottom = "12px";
-      card.style.border = "1px solid rgba(0,0,0,.06)";
+      card.style.border = "1px solid rgba(47,68,48,.11)";
+      card.style.boxShadow = "0 10px 24px rgba(47,68,48,.08)";
       card.style.overflow = "hidden";
 
       if (meal.imageUrl) {
@@ -128,19 +149,20 @@ const createFallbackWall = (
         img.style.width = "100%";
         img.style.maxHeight = "320px";
         img.style.objectFit = "cover";
-        img.style.borderRadius = "14px";
+        img.style.borderRadius = "16px";
         img.style.marginBottom = "14px";
         card.appendChild(img);
       }
 
       const food = document.createElement("strong");
       food.textContent = meal.food;
-      food.style.fontSize = "22px";
+      food.style.fontSize = "23px";
+      food.style.lineHeight = "1.22";
       card.appendChild(food);
 
       const time = document.createElement("p");
       time.textContent = formatShareTime(meal);
-      time.style.color = "#777";
+      time.style.color = "#687063";
       time.style.margin = "8px 0 0";
       card.appendChild(time);
 
