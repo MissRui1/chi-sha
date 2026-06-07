@@ -1,49 +1,60 @@
 @import "tailwindcss";
 
+/* ============================================================
+   吃啥 · 暖食帖 (Warm Table) — Design Language
+   Re-skin of the original tokens. All class names preserved so
+   app/page.tsx renders unchanged — only the look evolves.
+   ============================================================ */
+
 :root {
-  --background: #f4f6f2;
-  --foreground: #20231f;
-  --surface: #ffffff;
-  --surface-muted: #eef1ea;
-  --surface-inset: #f8faf6;
-  --muted: #687063;
-  --soft-muted: #98a08f;
-  --border: rgba(47, 68, 48, 0.11);
-  --shadow: 0 12px 30px rgba(47, 68, 48, 0.08);
-  --button: #263329;
-  --button-text: #f8faf6;
-  --accent: #d8593c;
-  --accent-soft: #e6eee1;
-  --fate-a: #263329;
-  --fate-b: #d8593c;
-  --fate-c: #e3a72f;
+  --background: #f4eee1;        /* warm cream paper */
+  --foreground: #25281d;        /* warm near-black */
+  --surface: #fffdf7;           /* cards */
+  --surface-muted: #ece4d3;
+  --surface-inset: #faf6ec;
+  --muted: #847f6d;
+  --soft-muted: #a39d88;
+  --border: rgba(45, 58, 40, 0.13);
+  --shadow: 0 20px 44px -26px rgba(58, 48, 28, 0.42);
+  --button: #2d3a28;            /* deep forest green */
+  --button-text: #f6f2e6;
+  --accent: #d5573b;            /* signature terracotta */
+  --accent-soft: #e3e5cf;       /* soft sage */
+  --fate-a: #2d3a28;
+  --fate-b: #d5573b;
+  --fate-c: #e6a23a;            /* honey amber */
+
+  /* type */
+  --font-display: "ZCOOL KuaiLe", "Baloo 2", "PingFang SC", system-ui, sans-serif;
+  --font-body: "Noto Sans SC", "PingFang SC", system-ui, -apple-system, sans-serif;
+  --font-hand: "Caveat", "Zhi Mang Xing", cursive;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #15130f;
-    --foreground: #f3eee5;
-    --surface: #211f1b;
-    --surface-muted: #2b2822;
-    --surface-inset: #1b1916;
-    --muted: #bbb0a1;
-    --soft-muted: #8c8377;
+    --background: #16140f;
+    --foreground: #f2ede1;
+    --surface: #211e18;
+    --surface-muted: #2b2820;
+    --surface-inset: #1c1a14;
+    --muted: #bbb1a0;
+    --soft-muted: #8c8475;
     --border: rgba(255, 255, 255, 0.1);
-    --shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-    --button: #f3eee5;
-    --button-text: #17130f;
-    --accent: #f07855;
-    --accent-soft: #3a2720;
-    --fate-a: #f3eee5;
-    --fate-b: #f07855;
-    --fate-c: #f2bd52;
+    --shadow: 0 22px 50px -28px rgba(0, 0, 0, 0.55);
+    --button: #f2ede1;
+    --button-text: #18140f;
+    --accent: #ec6a4c;
+    --accent-soft: #2e2a20;
+    --fate-a: #f2ede1;
+    --fate-b: #ec6a4c;
+    --fate-c: #efb454;
   }
 }
 
@@ -54,7 +65,17 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* warm rounded display font for headings */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
 }
 
 button,
@@ -65,13 +86,13 @@ label {
 button:focus-visible,
 label:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--foreground);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
 .app-shell {
   background:
-    linear-gradient(180deg, rgba(88, 122, 99, 0.1), transparent 22rem),
+    radial-gradient(120% 60% at 50% -8%, color-mix(in srgb, var(--accent-soft) 70%, transparent), transparent 60%),
     var(--background);
   color: var(--foreground);
 }
@@ -79,7 +100,7 @@ input:focus-visible {
 .surface-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 28px;
   box-shadow: var(--shadow);
 }
 
@@ -92,7 +113,7 @@ input:focus-visible {
 .meal-card {
   background: var(--surface-inset);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 20px;
 }
 
 .muted-text {
@@ -100,7 +121,7 @@ input:focus-visible {
 }
 
 .body-text {
-  color: color-mix(in srgb, var(--foreground) 72%, var(--muted));
+  color: color-mix(in srgb, var(--foreground) 74%, var(--muted));
 }
 
 .primary-button,
@@ -109,30 +130,31 @@ input:focus-visible {
 .chip-button,
 .pressable {
   transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+    transform 130ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
   will-change: transform;
 }
 
 .primary-button,
 .secondary-button {
   border-radius: 16px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .primary-button {
   background: var(--button);
   color: var(--button-text);
-  box-shadow: 0 8px 18px rgba(47, 42, 34, 0.14);
+  box-shadow: 0 14px 26px -16px rgba(45, 58, 40, 0.9);
 }
 
 .secondary-button,
 .chip-button {
-  background: var(--surface-muted);
+  background: var(--surface);
   color: var(--foreground);
+  border: 1.5px solid var(--border);
 }
 
 .primary-button:hover,
@@ -140,7 +162,7 @@ input:focus-visible {
 .pressable:hover,
 .segmented-item:hover,
 .chip-button:hover {
-  transform: translateY(-1px) translateZ(0);
+  transform: translateY(-2px) translateZ(0);
 }
 
 .primary-button:active,
@@ -151,44 +173,44 @@ input:focus-visible {
 }
 
 .chip-button {
-  border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.52rem 1rem;
+  padding: 0.55rem 1.05rem;
+  font-weight: 600;
   contain: layout paint;
 }
 
 .chip-button-active {
-  background: var(--button);
-  color: var(--button-text);
+  background: var(--accent);
+  color: #fff6ee;
+  border-color: var(--accent);
 }
 
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.35rem;
-  padding: 0.35rem;
-  border: 1px solid var(--border);
+  gap: 0.3rem;
+  padding: 0.32rem;
   border-radius: 18px;
-  background: var(--surface-inset);
+  background: var(--accent-soft);
 }
 
 .segmented-item {
   min-height: 2.75rem;
-  border-radius: 14px;
-  color: var(--muted);
+  border-radius: 13px;
+  color: color-mix(in srgb, var(--foreground) 70%, var(--muted));
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .segmented-item-active {
-  background: var(--button);
-  color: var(--button-text);
-  box-shadow: 0 8px 18px rgba(47, 42, 34, 0.13);
+  background: var(--surface);
+  color: var(--button);
+  box-shadow: var(--shadow);
 }
 
 .app-input {
-  background: var(--surface-inset);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
   border-radius: 16px;
   color: var(--foreground);
   outline: none;
@@ -200,7 +222,7 @@ input:focus-visible {
 }
 
 .app-input:focus {
-  border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  border-color: var(--button);
 }
 
 .delete-button {
@@ -209,7 +231,7 @@ input:focus-visible {
 }
 
 .delete-button:hover {
-  color: var(--foreground);
+  color: var(--accent);
   transform: translateY(-1px);
 }
 
@@ -218,7 +240,7 @@ input:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   background: var(--surface);
   color: var(--foreground);
   box-shadow: var(--shadow);
@@ -250,7 +272,7 @@ input:focus-visible {
 }
 
 .account-status-dot-on {
-  background: #34a853;
+  background: #5b8c4f;
 }
 
 .account-popover {
@@ -261,19 +283,20 @@ input:focus-visible {
   width: min(20rem, calc(100vw - 3rem));
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: 0 22px 60px rgba(47, 68, 48, 0.18);
+  border-radius: 22px;
+  box-shadow: 0 28px 64px -30px rgba(58, 48, 28, 0.5);
   backdrop-filter: blur(18px);
 }
 
 .quick-dish-button,
 .recipe-chip {
-  background: var(--surface-inset);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
   border-radius: 999px;
   color: var(--foreground);
   font-size: 0.875rem;
-  padding: 0.45rem 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
 }
 
 .quick-dish-button {
@@ -284,7 +307,7 @@ input:focus-visible {
 }
 
 .quick-dish-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+  border-color: var(--button);
   transform: translateY(-1px);
 }
 
@@ -295,12 +318,12 @@ input:focus-visible {
 .meal-detail-pill {
   flex: 0 0 auto;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   color: var(--accent);
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
-  padding: 0.38rem 0.55rem;
+  padding: 0.4rem 0.6rem;
 }
 
 .meal-card img {
@@ -315,7 +338,7 @@ input:focus-visible {
   align-items: flex-end;
   justify-content: center;
   padding: 1rem;
-  background: rgba(15, 18, 14, 0.42);
+  background: rgba(20, 18, 12, 0.46);
   backdrop-filter: blur(10px);
 }
 
@@ -325,13 +348,13 @@ input:focus-visible {
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 26px;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+  border-radius: 30px;
+  box-shadow: 0 30px 84px -36px rgba(0, 0, 0, 0.4);
 }
 
 .meal-detail-hero {
   background:
-    linear-gradient(135deg, var(--button), color-mix(in srgb, var(--accent) 74%, var(--button)));
+    linear-gradient(135deg, var(--button), color-mix(in srgb, var(--accent) 70%, var(--button)));
   color: var(--button-text);
 }
 
@@ -341,8 +364,7 @@ input:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background:
-    linear-gradient(135deg, var(--surface-muted), var(--surface-inset));
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-inset));
   color: var(--muted);
   text-align: center;
   line-height: 1.8;
@@ -427,14 +449,15 @@ input:focus-visible {
   line-height: 1.75rem;
 }
 
+/* ---------- Signature fate wheel ---------- */
 .fate-card {
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--fate-a) 92%, transparent), var(--fate-b)),
-    var(--surface);
-  border: 1px solid color-mix(in srgb, var(--fate-c) 28%, transparent);
-  border-radius: 24px;
+    radial-gradient(130% 120% at 85% 0%, color-mix(in srgb, var(--fate-b) 55%, transparent), transparent 58%),
+    linear-gradient(150deg, var(--fate-a), color-mix(in srgb, var(--fate-a) 80%, #000));
+  border: 1px solid color-mix(in srgb, var(--fate-c) 30%, transparent);
+  border-radius: 30px;
   box-shadow: var(--shadow);
-  color: #ffffff;
+  color: #f4eedd;
   overflow: hidden;
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
@@ -449,35 +472,33 @@ input:focus-visible {
 
 .fate-wheel {
   position: relative;
-  width: 76px;
-  height: 76px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   background:
     conic-gradient(
       from 0deg,
-      #fff 0 16%,
-      var(--fate-c) 16% 32%,
-      #fff 32% 48%,
-      #fb7185 48% 64%,
-      #fff 64% 80%,
-      #38bdf8 80% 100%
+      var(--fate-c) 0 25%,
+      #f4eedd 25% 50%,
+      var(--fate-b) 50% 75%,
+      #f4eedd 75% 100%
     );
-  border: 5px solid rgba(255, 255, 255, 0.38);
-  box-shadow: inset 0 0 0 8px rgba(0, 0, 0, 0.08);
+  border: 5px solid rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 0 0 7px rgba(0, 0, 0, 0.12), 0 10px 24px -8px rgba(0, 0, 0, 0.5);
 }
 
 .fate-wheel span {
   position: absolute;
-  inset: 26px;
+  inset: 30px;
   border-radius: 50%;
-  background: #111111;
-  border: 4px solid #ffffff;
+  background: var(--fate-a);
+  border: 3px solid #f4eedd;
 }
 
 .skeleton-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 28px;
   box-shadow: var(--shadow);
 }
 
@@ -496,11 +517,11 @@ input:focus-visible {
 }
 
 .tab-bar {
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
   border: 1px solid var(--border);
-  border-radius: 28px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  border-radius: 26px;
+  box-shadow: 0 34px 70px -32px rgba(58, 48, 28, 0.55);
+  backdrop-filter: blur(20px) saturate(1.1);
 }
 
 .bottom-nav-shell {
@@ -522,13 +543,18 @@ input:focus-visible {
 }
 
 .inspiration-card:nth-child(2n) {
-  border-left-color: #587a63;
+  border-left-color: var(--button);
+}
+
+.inspiration-card:nth-child(3n) {
+  border-left-color: var(--fate-c);
 }
 
 .inspiration-index {
+  font-family: var(--font-display);
   color: var(--accent);
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 0.95rem;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
@@ -552,12 +578,13 @@ input:focus-visible {
   padding: 0.65rem 0.15rem 0;
   color: var(--soft-muted);
   font-size: 0.78rem;
+  font-weight: 700;
   white-space: nowrap;
   transition: color 120ms ease, transform 120ms ease;
 }
 
 .tab-item-active {
-  color: var(--foreground);
+  color: var(--button);
 }
 
 .tab-dot {
@@ -566,7 +593,7 @@ input:focus-visible {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: var(--foreground);
+  background: var(--accent);
   opacity: 0;
   transform: scale(0.5);
   transition: opacity 120ms ease, transform 120ms ease;
@@ -584,5 +611,94 @@ input:focus-visible {
 
   100% {
     background-position: -120% 0;
+  }
+}
+
+/* ============================================================
+   DESKTOP / WIDE  (>= 980px)
+   Bottom tab-bar becomes a left sidebar; content column widens.
+   Pure CSS — app/page.tsx structure is untouched.
+   ============================================================ */
+@media (min-width: 980px) {
+  .app-shell {
+    padding-left: 248px;
+  }
+
+  /* roomy magazine column */
+  .app-shell .max-w-xl {
+    max-width: 54rem;
+  }
+
+  /* fixed bottom nav -> fixed left sidebar */
+  .tab-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 248px;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 5.6rem 1.1rem 2rem;
+    border: none;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .tab-bar::before {
+    content: "吃啥";
+    position: absolute;
+    top: 1.9rem;
+    left: 1.45rem;
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--button);
+  }
+
+  .tab-bar::after {
+    content: "好好吃饭";
+    position: absolute;
+    top: 2.25rem;
+    left: 5.1rem;
+    font-family: var(--font-hand);
+    font-size: 1.15rem;
+    color: var(--accent);
+  }
+
+  .tab-item {
+    flex: 0 0 auto;
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.85rem;
+    padding: 0.9rem 1.05rem;
+    border-radius: 16px;
+    font-size: 1.02rem;
+    color: var(--muted);
+  }
+
+  .tab-item:hover {
+    background: var(--accent-soft);
+    color: var(--foreground);
+    transform: none;
+  }
+
+  .tab-item-active {
+    background: var(--button);
+    color: var(--button-text);
+  }
+
+  .tab-dot {
+    display: none;
+  }
+
+  /* center modals instead of bottom-sheet on desktop */
+  .modal-backdrop {
+    align-items: center;
   }
 }
