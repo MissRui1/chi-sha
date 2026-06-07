@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { createAiClient, getAiModel } from "@/lib/ai";
+import { createAiClient, getRecommendModel } from "@/lib/ai";
 import { runJsonPrompt } from "@/lib/prompt-harness";
 import {
   curatedDishNames,
   curatedDrinkNames,
+  getRegionalDishNames,
   isKnownFoodName,
 } from "@/lib/dish-database";
 
@@ -74,6 +75,29 @@ const RecommendSchema = z.object({
   reason: z.string().min(1),
 });
 
+const uniq = (items: string[]) =>
+  items
+    .map((item) => item.trim())
+    .filter(
+      (item, index, arr) =>
+        item && arr.indexOf(item) === index
+    );
+
+const normalizeFoodText = (value: string) =>
+  value.replace(/\s+/g, "").toLowerCase();
+
+const foodOverlaps = (food: string, candidate: string) => {
+  const normalizedFood = normalizeFoodText(food);
+  const normalizedCandidate = normalizeFoodText(candidate);
+
+  return (
+    normalizedFood.length > 0 &&
+    normalizedCandidate.length > 0 &&
+    (normalizedFood.includes(normalizedCandidate) ||
+      normalizedCandidate.includes(normalizedFood))
+  );
+};
+
 const normalizeList = (
   value: string | string[] | undefined,
   fallback: string
@@ -91,14 +115,69 @@ const normalizeList = (
     : [fallback];
 };
 
+const getLocationPlaceText = (
+  location?: z.infer<typeof LocationSchema>
+) => {
+  if (!location) {
+    return "";
+  }
+
+  return (
+    [
+      location.province,
+      location.city,
+      location.district,
+      location.township,
+    ]
+      .filter(Boolean)
+      .join(" ") || location.formattedAddress || ""
+  );
+};
+
+const buildRegionalFoodContext = (
+  location?: z.infer<typeof LocationSchema>
+) => {
+  const place = getLocationPlaceText(location);
+  const dishes = getRegionalDishNames(location).slice(0, 10);
+
+  if (!place && dishes.length === 0) {
+    return {
+      place,
+      dishes,
+      prompt: "",
+    };
+  }
+
+  const dishText =
+    dishes.length > 0 ? dishes.join("、") : "暂无明确候选";
+
+  return {
+    place,
+    dishes,
+    prompt: [
+      "【地域美食策略】",
+      place
+        ? `用户所在地：${place}。`
+        : "用户所在地只获得了部分省市信息。",
+      `本地/周边特色候选：${dishText}。`,
+      "如果餐次、状态和禁忌不冲突，优先从这些候选里推荐；若候选不适合当前时段或用户状态，再选择同一地域常见、现实可获得的食物。",
+      "只能推荐菜品/小吃/饮品名称，不要编造具体店名，不要承诺附近一定能买到。",
+      "理由中可以自然提到所在地或本地口味，但必须像真实用户建议，避免旅游攻略腔。",
+    ].join("\n"),
+  };
+};
+
 const validateRecommendation = (
   parsed: z.infer<typeof RecommendSchema>,
   rules: RecommendationRules,
   mealTime: string,
-  history: string[]
+  history: string[],
+  allowedPoolOverride?: string[],
+  requiredRegionalPool: string[] = []
 ) => {
   const allowedPool =
-    mealTime === "奶茶" ? curatedDrinkNames : curatedDishNames;
+    allowedPoolOverride ??
+    (mealTime === "奶茶" ? curatedDrinkNames : curatedDishNames);
 
   if (!isKnownFoodName(parsed.food, allowedPool)) {
     throw new Error(
@@ -121,12 +200,23 @@ const validateRecommendation = (
   }
 
   const repeated = history.find((food) =>
-    food && parsed.food.includes(food)
+    food && foodOverlaps(parsed.food, food)
   );
 
   if (repeated) {
     throw new Error(
       `AI repeated existing history: ${repeated}`
+    );
+  }
+
+  if (
+    requiredRegionalPool.length > 0 &&
+    !requiredRegionalPool.some((food) =>
+      foodOverlaps(parsed.food, food)
+    )
+  ) {
+    throw new Error(
+      `AI ignored regional candidate pool: ${requiredRegionalPool.join(", ")}`
     );
   }
 };
@@ -502,19 +592,10 @@ const generateContext = (
   }
 
   if (location) {
-    const place = [
-      location.province,
-      location.city,
-      location.district,
-      location.township,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const regionalContext = buildRegionalFoodContext(location);
 
-    if (place || location.formattedAddress) {
-      contextParts.push(
-        `【位置背景】用户当前位置：${place || location.formattedAddress}。推荐应考虑当地常见餐饮和现实可获得性，但不要编造具体店名。`
-      );
+    if (regionalContext.prompt) {
+      contextParts.push(regionalContext.prompt);
     }
 
     if (location.nearbyFoodPois) {
@@ -553,11 +634,12 @@ const formatMemory = (memory: MemoryPayload[]) =>
 const fallbackRecommendation = (
   mealTime: string,
   moodList: string[],
-  avoidFoods: string[] = []
+  avoidFoods: string[] = [],
+  regionalFoods: string[] = []
 ) => {
   const avoid = new Set(
     avoidFoods.map((item) =>
-      item.replace(/\s+/g, "").toLowerCase()
+      normalizeFoodText(item)
     )
   );
   const pick = (
@@ -566,9 +648,22 @@ const fallbackRecommendation = (
     items.find(
       (item) =>
         !avoid.has(
-          item.food.replace(/\s+/g, "").toLowerCase()
+          normalizeFoodText(item.food)
         )
     ) ?? items[0];
+
+  if (mealTime !== "奶茶" && regionalFoods.length > 0) {
+    const picked =
+      regionalFoods.find(
+        (food) => !avoid.has(normalizeFoodText(food))
+      ) ?? regionalFoods[0];
+
+    return {
+      food: picked,
+      reason:
+        "已经结合你所在省市优先挑本地常见口味，这一顿更像附近真实会想吃的选择。",
+    };
+  }
 
   if (mealTime === "奶茶") {
     return pick([
@@ -691,8 +786,14 @@ export async function POST(req: Request) {
     );
     const historyText =
       history.join("、") || "暂无";
+    const regionalFoodContext =
+      buildRegionalFoodContext(body.location);
+    const regionalDishPool =
+      mealTime === "奶茶" ? [] : regionalFoodContext.dishes;
     const dishPool =
-      mealTime === "奶茶" ? curatedDrinkNames : curatedDishNames;
+      mealTime === "奶茶"
+        ? curatedDrinkNames
+        : uniq([...regionalDishPool, ...curatedDishNames]);
     const dishPoolText = dishPool.join("、");
     const retryText =
       body.retry && body.previousFood
@@ -710,6 +811,8 @@ export async function POST(req: Request) {
 5. 禁止重复已推荐、已拒绝或本次换一换前的食物。
 6. food 必须逐字来自“允许菜品池”，不能自创菜名或输出同一菜的少油/低脂变体。
 7. 只返回 JSON，不要 markdown，不要额外字段。
+8. 如果已获得用户省市位置，且不是“奶茶”场景，优先推荐当地或周边有代表性的菜品/小吃；不得只给全国通用菜，除非当地候选与餐次、状态或禁忌冲突。
+9. 地域推荐只能基于省、市、区县信息和允许菜品池，不要编造餐厅名、商圈名、营业状态或配送承诺。
 
 奶茶专属：
 - mealTime 为“奶茶”时 food 只能是具体茶饮名称。
@@ -733,6 +836,9 @@ ${styleStr}
 允许菜品池：
 ${dishPoolText}
 
+所在地特色候选：
+${regionalDishPool.length > 0 ? regionalDishPool.join("、") : "暂无明确所在地候选"}
+
 ${rules.banReasons ? `当前推荐规则：\n${rules.banReasons}\n` : ""}
 
 最近偏好记忆：
@@ -754,6 +860,7 @@ ${retryText}
 重要约束：
 - 必须严格遵守上述推荐规则。
 - food 必须逐字来自允许菜品池。
+- 如果“所在地特色候选”不为空，优先从候选里选；确实不适合当前状态/餐次时，才从完整菜品池中选择。
 - 禁止列表中的食物绝对不能推荐。
 - 优先推荐列表中的关键词。
 - 不能重复已推荐过的食物。
@@ -767,7 +874,7 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
 }`;
 
     const client = createAiClient();
-    const model = getAiModel();
+    const model = getRecommendModel();
 
     const parsed = await runJsonPrompt({
       client,
@@ -786,17 +893,24 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
       fallback: fallbackRecommendation(
         mealTime,
         moodList,
-        history
+        history,
+        regionalDishPool
       ),
       temperature: getTemperature(mealTime),
       maxAttempts: 3,
+      repairPrompt:
+        regionalDishPool.length > 0
+          ? `上一次输出没有通过校验。必须从所在地特色候选中选择一个 food：${regionalDishPool.join("、")}。只返回合法 JSON，不要 markdown，不要解释，不要添加多余字段。`
+          : undefined,
       throwOnFailure: true,
       validate: (value) =>
         validateRecommendation(
           value,
           rules,
           mealTime,
-          history
+          history,
+          dishPool,
+          regionalDishPool
         ),
     });
 

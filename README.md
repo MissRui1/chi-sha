@@ -24,9 +24,11 @@ Server-side location lookup uses Amap Web Service API. Configure the key in Verc
 
 ```bash
 AMAP_WEB_SERVICE_KEY=your_amap_web_service_key
+RECOMMEND_AI_MODEL=qwen3-max
 ```
 
 The browser obtains user permission for latitude/longitude, then `/api/location` calls Amap reverse geocoding on the server. The key is not exposed to client-side code.
+`/api/recommend` uses `RECOMMEND_AI_MODEL` for location-aware food recommendations, while other AI routes can keep using `AI_MODEL`.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

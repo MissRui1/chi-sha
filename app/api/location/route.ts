@@ -33,8 +33,8 @@ type AmapRegeoResponse = {
 type AmapIpResponse = {
   status?: string;
   info?: string;
-  province?: string;
-  city?: string;
+  province?: string | string[];
+  city?: string | string[];
   adcode?: string;
   rectangle?: string;
 };
@@ -150,12 +150,14 @@ const locateByIp = async (request: Request, key: string) => {
     ok: true,
     source: "ip",
     provider: "amap",
-    province: data.province ?? "",
-    city: data.city ?? "",
+    province: asText(data.province) ?? "",
+    city: asText(data.city) ?? "",
     district: "",
     township: "",
     adcode: data.adcode ?? "",
-    formattedAddress: [data.province, data.city].filter(Boolean).join(""),
+    formattedAddress: [asText(data.province), asText(data.city)]
+      .filter(Boolean)
+      .join(""),
     nearbyPois: [],
   };
 };

@@ -4,6 +4,7 @@ const DEFAULT_AI_BASE_URL =
   "https://api.openai-next.com/v1";
 const DEFAULT_AI_MODEL =
   "gemini-3.1-flash-image-preview";
+const DEFAULT_RECOMMEND_MODEL = "qwen3-max";
 
 const readEnv = (value: string | undefined) => {
   const trimmed = value?.trim();
@@ -12,6 +13,10 @@ const readEnv = (value: string | undefined) => {
 
 export const getAiModel = () =>
   readEnv(process.env.AI_MODEL) ?? DEFAULT_AI_MODEL;
+
+export const getRecommendModel = () =>
+  readEnv(process.env.RECOMMEND_AI_MODEL) ??
+  DEFAULT_RECOMMEND_MODEL;
 
 export const createAiClient = () => {
   const apiKey =
