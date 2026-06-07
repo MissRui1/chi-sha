@@ -6,17 +6,29 @@ import {
   useCallback,
   useRef,
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import { motion } from "framer-motion";
 import {
+  BookOpen,
   Camera,
+  Check,
   ChevronDown,
   ChevronUp,
   Cloud,
+  Dice5,
+  Heart,
+  Home as HomeIcon,
   LocateFixed,
   LogOut,
+  List,
+  Mic,
+  Plus,
   RefreshCw,
+  Share2,
+  Sparkles,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -158,6 +170,70 @@ const defaultMenuDishes = [
 ];
 
 const fateFallbackFoods = curatedDishNames;
+
+const mealTimeOptions = [
+  "早餐",
+  "午餐",
+  "晚餐",
+  "夜宵",
+  "奶茶",
+];
+
+const moodOptions = [
+  { label: "奖励自己", emoji: "🎁" },
+  { label: "摆烂", emoji: "🛋️" },
+  { label: "减脂期", emoji: "🥗" },
+  { label: "想吃热乎的", emoji: "♨️" },
+  { label: "想吃凉快的", emoji: "🌿" },
+  { label: "没食欲", emoji: "🫧" },
+  { label: "emo", emoji: "🌧️" },
+];
+
+const styleOptions = [
+  "中餐",
+  "韩餐",
+  "日料",
+  "西餐",
+  "快餐",
+  "甜点",
+  "随便",
+];
+
+const menuPhotoPool = [
+  "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=700&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=700&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1547592180-85f173990554?w=700&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1544025162-d76694265947?w=700&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=700&q=80&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=700&q=80&auto=format&fit=crop",
+];
+
+const heroPhoto =
+  "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=900&q=80&auto=format&fit=crop";
+
+const identifyPhoto =
+  "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=700&q=80&auto=format&fit=crop";
+
+const getGreeting = () => {
+  const hour = new Date().getHours();
+
+  if (hour >= 5 && hour < 11) return "早上好";
+  if (hour >= 11 && hour < 13) return "中午好";
+  if (hour >= 13 && hour < 18) return "下午好";
+  if (hour >= 18 && hour < 23) return "晚上好";
+
+  return "夜深了";
+};
+
+const getMenuPhoto = (dish: string, index: number) =>
+  menuPhotoPool[
+    Math.abs(
+      [...dish].reduce(
+        (sum, char) => sum + char.charCodeAt(0),
+        index
+      )
+    ) % menuPhotoPool.length
+  ];
 
 const randomInspirationPrompts: InspirationItem[] = [
   {
@@ -495,6 +571,82 @@ const InlineSkeleton = () => (
   </div>
 );
 
+const FoodPhoto = ({
+  src,
+  label,
+  ratio = "1.2",
+  className = "",
+  children,
+}: {
+  src?: string;
+  label: string;
+  ratio?: string;
+  className?: string;
+  children?: ReactNode;
+}) => {
+  const [errored, setErrored] = useState(false);
+
+  return (
+    <div
+      className={`photo ${className}`}
+      style={{ aspectRatio: ratio }}
+    >
+      {src && !errored ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={label}
+          className="dish-img"
+          loading="lazy"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <div className="img-fallback">{label}</div>
+      )}
+      {children}
+    </div>
+  );
+};
+
+const Field = ({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) => (
+  <div className="field-block">
+    <div className="field-head">
+      <span className="eyebrow">{label}</span>
+      {hint && <span className="muted field-hint">{hint}</span>}
+    </div>
+    {children}
+  </div>
+);
+
+const ScreenHead = ({
+  kicker,
+  title,
+  sub,
+  flush = false,
+}: {
+  kicker: string;
+  title: string;
+  sub: string;
+  flush?: boolean;
+}) => (
+  <div
+    className="float-in"
+    style={{ marginBottom: flush ? 0 : "1.4rem" }}
+  >
+    <span className="kicker">{kicker}</span>
+    <h1 className="font-display screen-title">{title}</h1>
+    <p className="muted screen-subtitle">{sub}</p>
+  </div>
+);
+
 const cleanJson = (str: string) =>
   str
     .replace(/^```json\n?/, "")
@@ -823,10 +975,12 @@ const MealCard = ({
   item,
   photoUrls,
   onSelect,
+  index,
 }: {
   item: MemoryItem;
   photoUrls: Record<string, string>;
   onSelect: (item: MemoryItem) => void;
+  index: number;
 }) => {
   const imageUrl = getMemoryImageUrl(item, photoUrls);
 
@@ -834,39 +988,39 @@ const MealCard = ({
     <button
       type="button"
       onClick={() => onSelect(item)}
-      className="meal-card pressable mb-3 w-full break-inside-avoid overflow-hidden text-left"
+      className="card diary-card float-in text-left"
+      style={{ animationDelay: `${index * 35}ms` }}
     >
-      {imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageUrl}
-          alt={item.food}
-          className="w-full object-cover"
-        />
-      )}
+      <FoodPhoto
+        src={imageUrl}
+        label={item.food}
+        ratio={index % 3 === 0 ? "0.82" : "1.05"}
+        className="diary-photo"
+      >
+        <span className="diary-heart">
+          <Heart size={16} fill="#fff" />
+        </span>
+      </FoodPhoto>
 
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <h4 className="font-semibold leading-tight">
-            {item.food}
-          </h4>
-          <span className="meal-detail-pill">详情</span>
-        </div>
-        <p className="text-xs muted-text mt-2">
+      <div className="diary-body">
+        <div className="diary-date">
           {formatDateTime(item.time, {
             timezone: item.timezone,
             timeUnknown: item.timeUnknown,
           })}
-        </p>
-        <p className="mt-3 text-xs body-text leading-5">
+        </div>
+        <div className="font-display diary-food-title">
+          {item.food}
+        </div>
+        <span className="tag-sage diary-tag">
           {[
             item.mealTime,
             item.mood,
             item.style,
           ]
             .filter(Boolean)
-            .join(" · ") || "点开查看这一顿的完整记录"}
-        </p>
+            .join(" · ") || "详情"}
+        </span>
       </div>
     </button>
   );
@@ -995,7 +1149,6 @@ export default function Home() {
   const [selectedMeal, setSelectedMeal] =
     useState<MemoryItem | null>(null);
 
-  const accountPanelRef = useRef<HTMLDivElement | null>(null);
   const cookCardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1024,10 +1177,12 @@ export default function Home() {
     }
 
     const closeOnOutside = (event: PointerEvent) => {
-      if (
-        accountPanelRef.current &&
-        !accountPanelRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      const accountRoots = Array.from(
+        document.querySelectorAll("[data-account-root]")
+      );
+
+      if (!accountRoots.some((root) => root.contains(target))) {
         setAccountPanelOpen(false);
       }
     };
@@ -2211,27 +2366,9 @@ export default function Home() {
     );
   };
 
-  const pageTitle =
-    page === "menu"
-      ? "做啥？"
-      : page === "discover"
-        ? "灵感"
-        : page === "recent"
-          ? "饮食日记"
-          : "吃啥？";
-
-  const pageSubtitle =
-    page === "menu"
-      ? "今天在家就做这个。"
-      : page === "discover"
-        ? "换个角度，给今天一点吃饭灵感。"
-        : page === "recent"
-          ? "最近认真吃过的每一顿。"
-          : "今天终于不用纠结了。";
-
   const visibleMenu = menuExpanded
     ? myMenu
-    : myMenu.slice(0, 6);
+    : myMenu.slice(0, 8);
   const hiddenMenuCount = Math.max(
     myMenu.length - visibleMenu.length,
     0
@@ -2239,173 +2376,240 @@ export default function Home() {
   const selectedMealImage = selectedMeal
     ? getMemoryImageUrl(selectedMeal, photoUrls)
     : undefined;
+  const likedMeals = memory.filter((item) => item.type === "like");
+  const thisWeekMeals = likedMeals.filter((item) =>
+    isThisWeek(new Date(item.time))
+  );
+  const thisMonthMeals = likedMeals.filter((item) =>
+    isThisMonth(new Date(item.time))
+  );
+  const avgSatisfaction = likedMeals.length
+    ? Math.min(9.8, 8.6 + likedMeals.length * 0.04).toFixed(1)
+    : "--";
+  const nearbyLabel = userLocation?.nearbyPois?.length
+    ? "附近：" +
+      userLocation.nearbyPois
+        .slice(0, 3)
+        .map((poi) => poi.name)
+        .join("、")
+    : "用于结合城市、区县和附近餐饮环境推荐。";
+  const inspirationItems = inspirations.length
+    ? inspirations
+    : randomInspirationPrompts;
+  const navItems = [
+    {
+      id: "today",
+      label: "今天吃啥",
+      icon: <HomeIcon size={21} />,
+    },
+    {
+      id: "menu",
+      label: "我的菜单",
+      icon: <List size={21} />,
+    },
+    {
+      id: "discover",
+      label: "灵感",
+      icon: <Sparkles size={21} />,
+    },
+    {
+      id: "recent",
+      label: "饮食日记",
+      icon: <BookOpen size={21} />,
+    },
+  ] as const;
 
-  return (
-    <main className="app-shell min-h-screen pb-40">
-      {/* 顶部 */}
-      <div className="max-w-xl mx-auto px-6 pt-12">
-        <div className="relative flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-5xl font-semibold tracking-tight">
-              {pageTitle}
-            </h1>
+  const renderAccountControl = (compact = false) => (
+    <div data-account-root className="account-root">
+      <button
+        type="button"
+        onClick={() => setAccountPanelOpen((open) => !open)}
+        aria-label="账号与同步"
+        aria-expanded={accountPanelOpen}
+        className={compact ? "avatar account-trigger" : "side-account"}
+      >
+        <span className={compact ? "" : "avatar"}>
+          {accountSession ? (
+            <Cloud size={compact ? 20 : 19} />
+          ) : (
+            <UserRound size={compact ? 20 : 19} />
+          )}
+        </span>
+        {!compact && (
+          <span className="side-account-copy">
+            <strong>{accountSession ? accountSession.account : "小食"}</strong>
+            <span className="muted">
+              {accountSession
+                ? lastSyncedAt
+                  ? "已同步 · " + formatDateTime(lastSyncedAt)
+                  : "已登录 · 可同步"
+                : "本地记录 · " + shortUserId(userId)}
+            </span>
+          </span>
+        )}
+        <span
+          className={
+            accountSession
+              ? "account-status-dot account-status-dot-on"
+              : "account-status-dot"
+          }
+        />
+      </button>
 
-            <p className="muted-text mt-3 leading-7">
-              {pageSubtitle}
-            </p>
-          </div>
-
-          <div ref={accountPanelRef} className="relative shrink-0">
+      {accountPanelOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="account-popover p-4"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">
+                {accountSession ? "账号同步" : "登录同步"}
+              </p>
+              <p className="text-xs muted-text mt-1">
+                {accountSession
+                  ? "账号：" + accountSession.account
+                  : "本地 ID：" + shortUserId(userId)}
+              </p>
+            </div>
             <button
               type="button"
-              onClick={() =>
-                setAccountPanelOpen((open) => !open)
-              }
-              aria-label="账号与同步"
-              aria-expanded={accountPanelOpen}
-              className="account-trigger pressable"
+              onClick={() => setAccountPanelOpen(false)}
+              aria-label="关闭账号面板"
+              className="icon-button"
             >
-              {accountSession ? (
-                <Cloud size={20} />
-              ) : (
-                <UserRound size={20} />
-              )}
-              <span
-                className={`account-status-dot ${
-                  accountSession
-                    ? "account-status-dot-on"
-                    : ""
-                }`}
-              />
+              <X size={16} />
             </button>
-
-            {accountPanelOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="account-popover p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {accountSession
-                        ? "账号同步"
-                        : "登录同步"}
-                    </p>
-                    <p className="text-xs muted-text mt-1">
-                      {accountSession
-                        ? `账号：${accountSession.account}`
-                        : `本地 ID：${shortUserId(userId)}`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAccountPanelOpen(false)}
-                    aria-label="关闭账号面板"
-                    className="icon-button"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                {accountSession ? (
-                  <div className="mt-4 space-y-3">
-                    <p className="text-xs muted-text leading-6">
-                      {lastSyncedAt
-                        ? `最近同步：${formatDateTime(lastSyncedAt)}`
-                        : "会同步菜单、饮食日记和日记照片"}
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => void manualSync()}
-                        disabled={syncLoading}
-                        className="secondary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
-                      >
-                        <RefreshCw size={15} />
-                        {syncLoading ? "同步中" : "同步"}
-                      </button>
-                      <button
-                        onClick={logoutAccount}
-                        className="secondary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
-                      >
-                        <LogOut size={15} />
-                        退出
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    <input
-                      value={loginAccount}
-                      onChange={(event) =>
-                        setLoginAccount(event.target.value)
-                      }
-                      placeholder="账号名"
-                      className="app-input w-full px-4 py-3 text-sm"
-                    />
-                    <input
-                      value={loginPasscode}
-                      onChange={(event) =>
-                        setLoginPasscode(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          void loginAndSync();
-                        }
-                      }}
-                      placeholder="同步口令"
-                      type="password"
-                      className="app-input w-full px-4 py-3 text-sm"
-                    />
-                    <button
-                      onClick={() => void loginAndSync()}
-                      disabled={syncLoading}
-                      className="primary-button w-full px-5 py-3 text-sm disabled:opacity-40"
-                    >
-                      {syncLoading ? "同步中" : "登录并同步"}
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            )}
           </div>
-        </div>
-      </div>
 
-      {/* 首页 */}
-      {page === "today" && (
-        <div className="max-w-xl mx-auto px-6 mt-10">
-          <div className="surface-card p-8 space-y-10">
-            <div className="location-card p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-400 mb-2">
-                    附近定位
-                  </p>
-                  <h3 className="font-semibold leading-tight">
-                    {getLocationLabel(userLocation)}
-                  </h3>
-                  <p className="muted-text mt-2 text-sm leading-6">
-                    {userLocation?.nearbyPois?.length
-                      ? `附近参考：${userLocation.nearbyPois
-                          .slice(0, 3)
-                          .map((poi) => poi.name)
-                          .join("、")}`
-                      : "用于结合城市、区县和附近餐饮环境推荐。"}
-                  </p>
-                  {locationError && (
-                    <p className="mt-2 text-xs text-red-500">
-                      {locationError}
-                    </p>
-                  )}
+          {accountSession ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-xs muted-text leading-6">
+                {lastSyncedAt
+                  ? "最近同步：" + formatDateTime(lastSyncedAt)
+                  : "会同步菜单、饮食日记和日记照片"}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => void manualSync()}
+                  disabled={syncLoading}
+                  className="secondary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  <RefreshCw size={15} />
+                  {syncLoading ? "同步中" : "同步"}
+                </button>
+                <button
+                  onClick={logoutAccount}
+                  className="secondary-button inline-flex items-center justify-center gap-2 px-4 py-2 text-sm"
+                >
+                  <LogOut size={15} />
+                  退出
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <input
+                value={loginAccount}
+                onChange={(event) =>
+                  setLoginAccount(event.target.value)
+                }
+                placeholder="账号名"
+                className="app-input w-full px-4 py-3 text-sm"
+              />
+              <input
+                value={loginPasscode}
+                onChange={(event) =>
+                  setLoginPasscode(event.target.value)
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void loginAndSync();
+                  }
+                }}
+                placeholder="同步口令"
+                type="password"
+                className="app-input w-full px-4 py-3 text-sm"
+              />
+              <button
+                onClick={() => void loginAndSync()}
+                disabled={syncLoading}
+                className="primary-button w-full px-5 py-3 text-sm disabled:opacity-40"
+              >
+                {syncLoading ? "同步中" : "登录并同步"}
+              </button>
+            </div>
+          )}
+        </motion.div>
+      )}
+    </div>
+  );
+
+  return (
+    <main className="app-shell paper-grain">
+      <aside className="sidebar">
+        <div className="side-brand">
+          <span className="brand-mark">吃啥</span>
+          <span className="brand-tag">好好吃饭</span>
+        </div>
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setPage(item.id)}
+            className={page === item.id ? "side-link is-on" : "side-link"}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+        <div className="side-foot">{renderAccountControl()}</div>
+      </aside>
+
+      <div className="app-inner">
+        <header className="topbar">
+          <div className="brand">
+            <span className="brand-mark">吃啥</span>
+            <span className="brand-tag">好好吃饭</span>
+          </div>
+          {renderAccountControl(true)}
+        </header>
+
+        <section className="content">
+          {page === "today" && (
+            <div className="screen-pad">
+              <div className="float-in">
+                <span className="kicker">好好吃饭 ·</span>
+                <h1 className="font-display today-hero">
+                  {getGreeting()}，<br />今天想吃点什么？
+                </h1>
+              </div>
+
+              <div className="card-flat loc-row">
+                <div className="loc-copy">
+                  <span className="loc-pin">
+                    <LocateFixed size={18} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="loc-title">
+                      {getLocationLabel(userLocation)}
+                    </div>
+                    <div className="muted loc-desc">
+                      {nearbyLabel}
+                    </div>
+                    {locationError && (
+                      <p className="loc-error">{locationError}</p>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => void locateUser()}
                   disabled={locationLoading}
-                  className="secondary-button inline-flex shrink-0 items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
+                  className="btn btn-ghost loc-btn"
                 >
-                  <LocateFixed size={16} />
+                  <RefreshCw size={15} />
                   {locationLoading
                     ? "定位中"
                     : userLocation
@@ -2413,587 +2617,437 @@ export default function Home() {
                       : "定位"}
                 </button>
               </div>
-            </div>
 
-            {/* 时间 */}
-            <div>
-              <p className="text-sm text-gray-400 mb-4">
-                现在吃哪顿？
-              </p>
+              <div className="today-grid">
+                <div className="today-controls">
+                  <Field label="现在吃哪顿">
+                    <div className="segmented">
+                      {mealTimeOptions.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setMealTime(item)}
+                          aria-pressed={mealTime === item}
+                          className={
+                            mealTime === item
+                              ? "seg-item is-on"
+                              : "seg-item"
+                          }
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
 
-              <div className="segmented-control">
-                {[
-                  "早餐",
-                  "午餐",
-                  "晚餐",
-                  "夜宵",
-                  "奶茶",
-                ].map((item) => (
+                  <Field label="现在是什么状态" hint="可多选">
+                    <div className="chip-wrap">
+                      {moodOptions.map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => toggleValue(item.label, setMood)}
+                          aria-pressed={mood.includes(item.label)}
+                          className={
+                            mood.includes(item.label)
+                              ? "chip is-on accent"
+                              : "chip"
+                          }
+                        >
+                          <span aria-hidden>{item.emoji}</span>
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+
+                  <Field label="想吃什么类型" hint="可多选">
+                    <div className="chip-wrap">
+                      {styleOptions.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => toggleValue(item, setStyle)}
+                          aria-pressed={style.includes(item)}
+                          className={
+                            style.includes(item)
+                              ? "chip is-on"
+                              : "chip"
+                          }
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+
                   <button
-                    key={item}
-                    onClick={() =>
-                      setMealTime(item)
-                    }
-                    aria-pressed={mealTime === item}
-                    className={`segmented-item ${
-                      mealTime === item
-                        ? "segmented-item-active"
-                        : ""
-                    }`}
+                    type="button"
+                    onClick={() => generateFood(false)}
+                    disabled={loading}
+                    className="btn btn-accent decide-btn"
                   >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 情绪 */}
-            <div>
-              <p className="text-sm text-gray-400 mb-4">
-                现在是什么状态？
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "奖励自己",
-                  "摆烂",
-                  "减脂期",
-                  "想吃热乎的",
-                  "想吃凉快的",
-                  "没食欲",
-                  "emo",
-                ].map((item) => (
-                  <button
-                    key={item}
-                    onClick={() =>
-                      toggleValue(item, setMood)
-                    }
-                    aria-pressed={mood.includes(item)}
-                    className={`chip-button ${
-                      mood.includes(item)
-                        ? "chip-button-active"
-                        : ""
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 菜系 */}
-            <div>
-              <p className="text-sm text-gray-400 mb-4">
-                想吃什么类型？
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "中餐",
-                  "韩餐",
-                  "日料",
-                  "西餐",
-                  "快餐",
-                  "随便",
-                ].map((item) => (
-                  <button
-                    key={item}
-                    onClick={() =>
-                      toggleValue(item, setStyle)
-                    }
-                    aria-pressed={style.includes(item)}
-                    className={`chip-button ${
-                      style.includes(item)
-                        ? "chip-button-active"
-                        : ""
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              onClick={() =>
-                generateFood(false)
-              }
-              disabled={loading}
-              className="primary-button w-full py-4 text-lg"
-            >
-              帮我决定
-            </button>
-          </div>
-
-          <button
-            onClick={spinFateBox}
-            disabled={fateLoading}
-            className="fate-card mt-6 w-full text-left p-8"
-          >
-            <div className="flex items-center justify-between gap-5">
-              <div>
-                <p className="text-sm opacity-70 mb-3">
-                  转盘盲盒模式
-                </p>
-                <h2 className="text-3xl font-semibold leading-tight">
-                  完全交给命运
-                </h2>
-                <p className="mt-4 leading-8 opacity-80">
-                  从菜单、日记和随机池里抽一道，停在哪道就吃哪道。
-                </p>
-              </div>
-
-              <motion.div
-                animate={
-                  fateLoading
-                    ? { rotate: 1080 }
-                    : { rotate: 0 }
-                }
-                transition={{
-                  duration: 1.25,
-                  ease: "easeInOut",
-                }}
-                className="fate-wheel shrink-0"
-              >
-                <span />
-              </motion.div>
-            </div>
-          </button>
-
-          {fateLoading && (
-            <div className="surface-card mt-6 p-8">
-              <InlineSkeleton />
-            </div>
-          )}
-
-          {fateResult && !fateLoading && (
-            <button
-              onClick={acceptFateResult}
-              className="surface-card pressable mt-6 w-full text-left p-8"
-            >
-              <p className="text-sm text-gray-400 mb-3">
-                {fateResult.source}
-              </p>
-              <h2 className="text-4xl font-semibold tracking-tight">
-                {fateResult.food}
-              </h2>
-              <p className="muted-text mt-5 leading-8">
-                点一下就把它放进今天的推荐结果。
-              </p>
-            </button>
-          )}
-
-          {loading && <ResultSkeleton className="mt-8" />}
-
-          {/* 推荐结果 */}
-          {food && !loading && (
-            <div className="mt-8 surface-card p-8">
-              <p className="text-sm text-gray-400 mb-3">
-                AI 的建议
-              </p>
-
-              <h2 className="text-4xl font-semibold tracking-tight mb-5">
-                {food}
-              </h2>
-
-              <p className="body-text leading-8 mb-8">
-                {reason}
-              </p>
-
-              <div className="flex gap-4">
-                {!acceptedFood ? (
-                  <button
-                    onClick={() => acceptFood()}
-                    className="primary-button flex-1 py-3"
-                  >
-                    就这个了
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setFood("");
-                      setReason("");
-                      setAcceptedFood("");
-                    }}
-                    className="primary-button flex-1 py-3"
-                  >
-                    完成
-                  </button>
-                )}
-
-                <button
-                  onClick={declineFood}
-                  disabled={Boolean(acceptedFood)}
-                  className="secondary-button flex-1 py-3"
-                >
-                  换一换
-                </button>
-              </div>
-
-              <label className="secondary-button mt-4 block text-center py-3 cursor-pointer">
-                {acceptedFood ? "补传这顿照片" : "带照片确认"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={acceptFoodWithPhoto}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 饮食日记 */}
-      {page === "recent" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-3xl font-semibold">
-                饮食日记
-              </h2>
-              <p className="muted-text mt-2">
-                认真吃过的都算数。
-              </p>
-            </div>
-
-            <button
-              onClick={exportRecentMeals}
-              disabled={shareLoading}
-              className="primary-button px-4 py-3 disabled:opacity-40"
-            >
-              {shareLoading ? "生成中" : "导出"}
-            </button>
-          </div>
-
-          <div className="surface-card p-5 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">自己记一顿</h3>
-                <p className="text-sm muted-text mt-1">
-                  不用等推荐，想到什么就直接写进日记。
-                </p>
-              </div>
-              <button
-                onClick={() => startVoiceInput("diary")}
-                className="secondary-button px-4 py-2 text-sm"
-              >
-                {voiceTarget === "diary" ? "听你说" : "语音"}
-              </button>
-            </div>
-            <input
-              value={manualDiaryFood}
-              onChange={(event) =>
-                setManualDiaryFood(event.target.value)
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  addManualDiary();
-                }
-              }}
-              placeholder="比如：番茄炒蛋、牛肉面、今天自己煮了粥"
-              className="app-input w-full px-4 py-3"
-            />
-            <div className="flex gap-3">
-              <input
-                value={manualDiaryNote}
-                onChange={(event) =>
-                  setManualDiaryNote(event.target.value)
-                }
-                placeholder="状态备注，可不填"
-                className="app-input min-w-0 flex-1 px-4 py-3"
-              />
-              <button
-                onClick={addManualDiary}
-                className="primary-button px-5 py-3"
-              >
-                记录
-              </button>
-            </div>
-          </div>
-
-          {memory.filter(
-            (item) => item.type === "like"
-          ).length === 0 && (
-            <div className="surface-card p-8 muted-text">
-              还没有记录，今天去吃点什么吧
-            </div>
-          )}
-
-          <div id="meal-wall">
-            {groupMeals(memory).map((group) => (
-              <section key={group.title}>
-                <h3 className="text-sm text-gray-400 mb-3">
-                  {group.title}
-                </h3>
-
-                <div className="columns-2 gap-3">
-                  {group.items.map((item) => (
-                    <MealCard
-                      key={`${item.food}-${item.time}`}
-                      item={item}
-                      photoUrls={photoUrls}
-                      onSelect={setSelectedMeal}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-
-          {insights.map((item, index) => {
-            const lines = item.split("\n");
-
-            return (
-              <div
-                key={index}
-                className="surface-card p-8"
-              >
-                <h2 className="text-3xl font-semibold leading-tight">
-                  {lines[0]}
-                </h2>
-
-                <p className="muted-text mt-5 leading-8">
-                  {lines[1]}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 我的菜单 */}
-      {page === "menu" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-6">
-          {/* AI 推荐 */}
-          <div ref={cookCardRef} className="surface-card p-8 scroll-mt-6">
-            <p className="text-sm text-gray-400 mb-4">
-              今晚做什么
-            </p>
-
-            {cookResult ? (
-              <>
-                <h2 className="text-4xl font-semibold tracking-tight">
-                  {cookResult.dish}
-                </h2>
-
-                <p className="muted-text mt-5 leading-8">
-                  {cookResult.reason}
-                </p>
-
-                <div className="flex gap-4 mt-8">
-                  <button
-                    onClick={() =>
-                      setShowCookRecipe(true)
-                    }
-                    className="primary-button flex-1 py-3"
-                  >
-                    就做这个
+                    <Sparkles size={20} />
+                    {loading ? "正在想" : "帮我决定"}
                   </button>
 
                   <button
-                    onClick={() =>
-                      void generateCookAI()
-                    }
-                    className="secondary-button flex-1 py-3"
+                    type="button"
+                    onClick={spinFateBox}
+                    disabled={fateLoading}
+                    className="fate fate-card"
                   >
-                    换一个
+                    <div className="fate-card-inner">
+                      <div>
+                        <div className="font-hand fate-hand">交给命运</div>
+                        <h3 className="font-display fate-title">
+                          转盘盲盒模式
+                        </h3>
+                        <p className="fate-desc">
+                          从菜单、日记和随机池里抽一道，停在哪道吃哪道。
+                        </p>
+                      </div>
+                      <motion.div
+                        animate={
+                          fateLoading ? { rotate: 1080 } : { rotate: 0 }
+                        }
+                        transition={{ duration: 1.25, ease: "easeInOut" }}
+                        className="wheel"
+                      />
+                    </div>
                   </button>
+
+                  {fateResult && !fateLoading && (
+                    <button
+                      type="button"
+                      onClick={acceptFateResult}
+                      className="card fate-result float-in"
+                    >
+                      <span className="badge">
+                        <Dice5 size={14} />
+                        {fateResult.source}
+                      </span>
+                      <h2 className="font-display fate-result-food">
+                        {fateResult.food}
+                      </h2>
+                      <p className="muted fate-result-copy">
+                        点一下，把它放进今天的推荐
+                      </p>
+                    </button>
+                  )}
                 </div>
 
-                {showCookRecipe && (
-                  <div className="inset-card mt-6 p-5 space-y-5">
-                    <div>
-                      <h3 className="font-semibold mb-3">
-                        食材
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {cookResult.ingredients.map(
-                          (item) => (
-                            <span
-                              key={item}
-                              className="recipe-chip"
-                            >
+                <div className="today-result-col" id="today-result">
+                  {loading && <ResultSkeleton />}
+
+                  {food && !loading ? (
+                    <div className="card result-card float-in" key={food}>
+                      <FoodPhoto
+                        src={getMenuPhoto(food, 0)}
+                        label={food}
+                        ratio="1.35"
+                        className="result-photo"
+                      >
+                        <div className="result-photo-tags">
+                          <span className="tag-chip">
+                            {mealTime} · AI 替你选的
+                          </span>
+                        </div>
+                      </FoodPhoto>
+                      <div className="result-body">
+                        <span className="eyebrow">
+                          {style.join("、") || "随便"} · AI 的建议
+                        </span>
+                        <h2 className="font-display result-name">
+                          {food}
+                        </h2>
+                        <div className="result-meta">
+                          <span className="meta-pill">{mealTime}</span>
+                          {mood.slice(0, 2).map((item) => (
+                            <span key={item} className="meta-pill">
                               {item}
                             </span>
-                          )
-                        )}
+                          ))}
+                        </div>
+                        <p className="result-reason">{reason}</p>
+                        <div className="result-actions">
+                          {!acceptedFood ? (
+                            <button
+                              type="button"
+                              onClick={() => acceptFood()}
+                              className="btn btn-primary result-action-main"
+                            >
+                              <Check size={18} />
+                              就这个了
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFood("");
+                                setReason("");
+                                setAcceptedFood("");
+                              }}
+                              className="btn btn-primary result-action-main"
+                            >
+                              <Check size={18} />
+                              已记入日记
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={declineFood}
+                            disabled={Boolean(acceptedFood)}
+                            className="btn btn-ghost result-action-secondary"
+                          >
+                            <RefreshCw size={17} />
+                            换一换
+                          </button>
+                        </div>
+                        <label className="btn btn-ghost photo-confirm-btn">
+                          <Camera size={17} />
+                          {acceptedFood ? "补传这顿照片" : "带照片确认"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={acceptFoodWithPhoto}
+                            className="hidden"
+                          />
+                        </label>
                       </div>
                     </div>
+                  ) : (
+                    !loading && (
+                      <div className="result-empty">
+                        <div className="result-empty-art">
+                          <FoodPhoto
+                            src={heroPhoto}
+                            label="今天吃啥"
+                            ratio="1.5"
+                          />
+                        </div>
+                        <h3 className="font-display result-empty-title">
+                          还没想好？
+                        </h3>
+                        <p className="muted result-empty-copy">
+                          选好心情和口味，点「帮我决定」，<br />或者直接转一下盲盒，交给命运。
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
+          {page === "menu" && (
+            <div className="screen-pad">
+              <ScreenHead
+                kicker="家里这些我会做 ·"
+                title="我的菜单"
+                sub="把会做、想做的菜攒成一面墙，纠结时从这里抽。"
+              />
+
+              <div className="card identify-card">
+                <div className="identify-text">
+                  <span className="badge identify-badge">
+                    <Camera size={14} />
+                    拍冰箱
+                  </span>
+                  <h3 className="font-display identify-title">
+                    拍一下现有食材，<br />帮你想今晚做什么
+                  </h3>
+                  <p className="muted identify-desc">
+                    拍冰箱、案板或剩菜，先识别能用的食材，再生成顺手的清库存家常菜。
+                  </p>
+                  <label className="btn btn-primary identify-upload">
+                    <Camera size={19} />
+                    {identifyLoading ? "识别中" : "拍照识别食材"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={identifyFood}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <div className="identify-photo">
+                  <FoodPhoto src={identifyPhoto} label="食材" ratio="1" />
+                </div>
+              </div>
+
+              {(identifyLoading || identifyResult) && (
+                <div className="card-flat identify-result-panel">
+                  {identifyLoading && <InlineSkeleton />}
+                  {identifyResult && !identifyLoading && (
                     <div>
-                      <h3 className="font-semibold mb-3">
-                        做法
+                      <span className="eyebrow">食材盘点</span>
+                      <h3 className="font-display panel-title">
+                        {identifyResult.dish}
                       </h3>
-                      <ol className="space-y-3">
-                        {cookResult.steps.map(
-                          (step, index) => (
-                            <li
-                              key={step}
-                              className="recipe-step"
+                      <p className="muted panel-copy">
+                        {identifyResult.suggestion}
+                      </p>
+
+                      {identifyResult.ingredients.length > 0 && (
+                        <div className="chip-wrap panel-chips">
+                          {identifyResult.ingredients.map((item) => (
+                            <span key={item} className="recipe-chip">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {identifyResult.cookableDishes.length > 0 && (
+                        <div className="recipe-suggestions">
+                          {identifyResult.cookableDishes.map((item) => (
+                            <div key={item.dish} className="recipe-suggestion p-4">
+                              <h4 className="font-semibold">{item.dish}</h4>
+                              <p className="muted-text mt-2 leading-7">
+                                {item.reason}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {identifyResult.kind !== "non_food" && (
+                        <div className="panel-actions">
+                          {identifyResult.kind === "dish" && (
+                            <button
+                              type="button"
+                              onClick={addIdentifiedDishToMenu}
+                              className="btn btn-primary"
                             >
-                              <span>{index + 1}</span>
-                              <p>{step}</p>
-                            </li>
-                          )
-                        )}
-                      </ol>
+                              <Plus size={17} />
+                              加入菜单
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={cookWithIdentifiedIngredients}
+                            className="btn btn-ghost"
+                          >
+                            按这些食材推荐
+                          </button>
+                        </div>
+                      )}
                     </div>
+                  )}
+                </div>
+              )}
 
-                    <p className="muted-text leading-7">
-                      {cookResult.tips}
+              <div ref={cookCardRef} className="card-flat cook-card scroll-mt-6">
+                <div>
+                  <span className="eyebrow">今晚做什么</span>
+                  {cookResult ? (
+                    <>
+                      <h2 className="font-display panel-title">
+                        {cookResult.dish}
+                      </h2>
+                      <p className="muted panel-copy">{cookResult.reason}</p>
+                    </>
+                  ) : (
+                    <p className="muted panel-copy">
+                      让 AI 从你的菜单里帮你决定今晚做什么。
                     </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="muted-text mb-6">
-                  让 AI 从你的菜单里帮你决定今晚做什么。
-                </p>
-
+                  )}
+                </div>
+                <div className="cook-actions">
+                  {cookResult ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowCookRecipe(true)}
+                        className="btn btn-primary"
+                      >
+                        就做这个
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void generateCookAI()}
+                        disabled={cookLoading}
+                        className="btn btn-ghost"
+                      >
+                        换一个
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void generateCookAI()}
+                      disabled={myMenu.length === 0 || cookLoading}
+                      className="btn btn-primary"
+                    >
+                      <Sparkles size={18} />
+                      {cookLoading ? "正在想" : "帮我决定今晚做什么"}
+                    </button>
+                  )}
+                </div>
                 {cookLoading && (
-                  <div className="mb-6">
+                  <div className="cook-loading">
                     <InlineSkeleton />
                   </div>
                 )}
-
-                <button
-                  onClick={() =>
-                    void generateCookAI()
-                  }
-                  disabled={
-                    myMenu.length === 0 || cookLoading
-                  }
-                  className="primary-button w-full py-4 disabled:opacity-30"
-                >
-                  帮我决定今晚做什么
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="surface-card p-8">
-            <h2 className="text-3xl font-semibold leading-tight">
-              拍照识材
-            </h2>
-            <p className="muted-text mt-5 leading-8">
-              拍一下冰箱、案板或剩余食材，先识别能用的食材，再生成适合清库存的家常菜。
-            </p>
-
-            <label className="primary-button mt-6 flex cursor-pointer items-center justify-center gap-2 py-4 text-center">
-              <Camera size={19} />
-              拍照清理冰箱食材
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={identifyFood}
-                className="hidden"
-              />
-            </label>
-
-            {identifyLoading && (
-              <div className="mt-6">
-                <InlineSkeleton />
-              </div>
-            )}
-
-            {identifyResult && (
-              <div className="mt-6 inset-card p-5">
-                <p className="text-sm text-gray-400 mb-2">
-                  食材盘点
-                </p>
-                <h3 className="text-2xl font-semibold">
-                  {identifyResult.dish}
-                </h3>
-                <p className="muted-text mt-3 leading-7">
-                  {identifyResult.suggestion}
-                </p>
-
-                {identifyResult.ingredients.length > 0 && (
-                  <div className="mt-5">
-                    <p className="text-sm text-gray-400 mb-3">
-                      可用食材
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {identifyResult.ingredients.map(
-                        (item) => (
-                          <span
-                            key={item}
-                            className="recipe-chip"
-                          >
+                {cookResult && showCookRecipe && (
+                  <div className="inset-card cook-recipe">
+                    <div>
+                      <h3 className="font-semibold mb-3">食材</h3>
+                      <div className="chip-wrap">
+                        {cookResult.ingredients.map((item) => (
+                          <span key={item} className="recipe-chip">
                             {item}
                           </span>
-                        )
-                      )}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {identifyResult.cookableDishes.length > 0 && (
-                  <div className="mt-5 space-y-3">
-                    <p className="text-sm text-gray-400">
-                      可以顺手做
-                    </p>
-                    {identifyResult.cookableDishes.map(
-                      (item) => (
-                        <div
-                          key={item.dish}
-                          className="recipe-suggestion p-4"
-                        >
-                          <h4 className="font-semibold">
-                            {item.dish}
-                          </h4>
-                          <p className="muted-text mt-2 leading-7">
-                            {item.reason}
-                          </p>
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-
-                {identifyResult.kind !==
-                  "non_food" && (
-                  <div className="grid grid-cols-1 gap-3 mt-5 sm:grid-cols-2">
-                    {identifyResult.kind === "dish" && (
-                      <button
-                        onClick={
-                          addIdentifiedDishToMenu
-                        }
-                        className="primary-button py-3"
-                      >
-                        加入菜单
-                      </button>
-                    )}
-                    <button
-                      onClick={cookWithIdentifiedIngredients}
-                      className="secondary-button py-3"
-                    >
-                      按这些食材推荐
-                    </button>
+                    <div>
+                      <h3 className="font-semibold mb-3">做法</h3>
+                      <ol className="space-y-3">
+                        {cookResult.steps.map((step, index) => (
+                          <li key={step} className="recipe-step">
+                            <span>{index + 1}</span>
+                            <p>{step}</p>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                    <p className="muted panel-copy">{cookResult.tips}</p>
                   </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* 我的菜 */}
-          <div className="surface-card p-8">
-            <p className="text-sm text-gray-400 mb-5">
-              我的菜
-            </p>
+              <div className="add-row menu-add-row">
+                <input
+                  value={newDish}
+                  onChange={(event) => setNewDish(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      addDish();
+                    }
+                  }}
+                  placeholder="加一道会做的菜，比如「葱油拌面」"
+                  className="input"
+                />
+                <button
+                  type="button"
+                  onClick={addDish}
+                  className="btn btn-accent add-icon-btn"
+                  aria-label="添加菜品"
+                >
+                  <Plus size={19} />
+                </button>
+              </div>
 
-            <div className="mb-6">
-              <p className="text-sm text-gray-400 mb-3">
-                家常菜快捷添加
-              </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="chip-wrap quick-add-row">
                 {defaultMenuDishes.map((dish) => (
                   <button
                     key={dish}
+                    type="button"
                     onClick={() => {
                       if (myMenu.includes(dish)) {
                         toast.error("这道菜已经在菜单里了");
@@ -3005,170 +3059,323 @@ export default function Home() {
                       }
                     }}
                     disabled={myMenu.includes(dish)}
-                    className="quick-dish-button disabled:opacity-35"
+                    className="chip quick-add-chip"
                   >
-                    {dish}
+                    + {dish}
                   </button>
                 ))}
               </div>
-            </div>
 
-            <div className="flex gap-3 mb-6">
-              <input
-                value={newDish}
-                onChange={(e) =>
-                  setNewDish(
-                    e.target.value
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    addDish();
-                  }
-                }}
-                placeholder="输入一道你会做的菜"
-                className="app-input flex-1 px-5 py-4"
+              {myMenu.length === 0 ? (
+                <div className="card-flat empty-state menu-empty">
+                  <h3 className="font-display panel-title">菜单还是空的</h3>
+                  <p className="muted panel-copy">
+                    先加几道常做的菜，AI 才能帮你从家常选项里做决定。
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="menu-grid">
+                    {visibleMenu.map((dish, index) => (
+                      <motion.div
+                        key={dish}
+                        layout
+                        className="card menu-card float-in"
+                        style={{ animationDelay: index * 30 + "ms" }}
+                      >
+                        <FoodPhoto
+                          src={getMenuPhoto(dish, index)}
+                          label={dish}
+                          ratio="1.25"
+                          className="menu-photo"
+                        />
+                        <div className="menu-card-body">
+                          <div className="font-display menu-card-title">
+                            {dish}
+                          </div>
+                          <div className="muted menu-card-note">
+                            {index < defaultMenuDishes.length
+                              ? "家常 · 可快速决定"
+                              : "新加入 · 我的菜单"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => deleteDish(dish)}
+                          className="menu-heart"
+                          aria-label={"删除 " + dish}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {myMenu.length > 8 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMenuExpanded((expanded) => !expanded)
+                      }
+                      className="btn btn-ghost menu-expand-btn"
+                    >
+                      {menuExpanded ? (
+                        <>
+                          收起菜单 <ChevronUp size={16} />
+                        </>
+                      ) : (
+                        <>
+                          展开剩余 {hiddenMenuCount} 道
+                          <ChevronDown size={16} />
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {page === "discover" && (
+            <div className="screen-pad">
+              <ScreenHead
+                kicker="换个角度想吃饭 ·"
+                title="灵感墙"
+                sub="不给答案，只给一点方向。今天就照着其中一条吃。"
               />
 
-              <button
-                onClick={addDish}
-                className="primary-button px-5"
-              >
-                添加
-              </button>
-            </div>
-
-            {myMenu.length === 0 ? (
-              <div className="empty-state p-6">
-                <h3 className="font-semibold">
-                  菜单还是空的
-                </h3>
-                <p className="muted-text mt-2 leading-7">
-                  先加几道常做的菜，AI 才能帮你从家常选项里做决定。
-                </p>
+              <div className="insp-actions">
+                <button
+                  type="button"
+                  onClick={() => void generateInspirations()}
+                  className="btn btn-primary"
+                >
+                  <Sparkles size={19} />
+                  AI 补满灵感墙
+                </button>
+                <button
+                  type="button"
+                  onClick={addRandomInspiration}
+                  className="btn btn-ghost"
+                >
+                  翻一张
+                </button>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {visibleMenu.map((dish) => (
-                  <motion.div
-                    key={dish}
-                    layout
-                    className="menu-row px-5 py-4 flex justify-between items-center"
+              <div className="add-row insp-add-row">
+                <input
+                  value={manualInspiration}
+                  onChange={(event) =>
+                    setManualInspiration(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      addManualInspiration();
+                    }
+                  }}
+                  placeholder="写下一个你想到的小灵感..."
+                  className="input"
+                />
+                <button
+                  type="button"
+                  onClick={addManualInspiration}
+                  className="btn btn-accent add-icon-btn"
+                  aria-label="记下灵感"
+                >
+                  <Plus size={19} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startVoiceInput("inspiration")}
+                  className="btn btn-ghost voice-btn"
+                >
+                  <Mic size={18} />
+                  {voiceTarget === "inspiration" ? "听你说" : "语音"}
+                </button>
+              </div>
+
+              <div className="insp-grid">
+                {inspirationItems.map((item, index) => (
+                  <button
+                    key={item.title + index}
+                    type="button"
+                    onClick={() => {
+                      setMood((prev) =>
+                        uniq([...prev, item.title]).slice(-4)
+                      );
+                      setPage("today");
+                    }}
+                    className={
+                      "insp-card float-in tone-" + String(index % 3)
+                    }
+                    style={{ animationDelay: index * 35 + "ms" }}
                   >
-                    <span>{dish}</span>
-
-                    <button
-                      onClick={() =>
-                        deleteDish(dish)
-                      }
-                      className="delete-button"
-                    >
-                      删除
-                    </button>
-                  </motion.div>
+                    <span className="insp-bar" />
+                    <span className="insp-num font-display">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <h3 className="font-display insp-title">
+                      {item.title}
+                    </h3>
+                    <p className="insp-desc">{item.desc}</p>
+                  </button>
                 ))}
+              </div>
+            </div>
+          )}
 
-                {myMenu.length > 6 && (
+          {page === "recent" && (
+            <div className="screen-pad">
+              <div className="diary-head-row">
+                <ScreenHead
+                  kicker="认真吃过的都算数 ·"
+                  title="饮食日记"
+                  sub="把每一顿好好吃过的饭，留成一面会发光的墙。"
+                  flush
+                />
+                <button
+                  type="button"
+                  onClick={exportRecentMeals}
+                  disabled={shareLoading}
+                  className="btn btn-ghost export-btn"
+                >
+                  <Share2 size={17} />
+                  {shareLoading ? "生成中" : "生成图"}
+                </button>
+              </div>
+
+              <div className="diary-stats">
+                <div className="stat">
+                  <span className="stat-num font-display">
+                    {thisMonthMeals.length}
+                  </span>
+                  <span className="stat-label">本月记录</span>
+                </div>
+                <div className="stat-div" />
+                <div className="stat">
+                  <span className="stat-num font-display">
+                    {thisWeekMeals.length}
+                  </span>
+                  <span className="stat-label">本周</span>
+                </div>
+                <div className="stat-div" />
+                <div className="stat">
+                  <span className="stat-num font-display">
+                    {avgSatisfaction}
+                  </span>
+                  <span className="stat-label">平均满足分</span>
+                </div>
+              </div>
+
+              <div className="card-flat diary-manual-card">
+                <div className="diary-manual-head">
+                  <div>
+                    <h3 className="font-display diary-manual-title">
+                      自己记一顿
+                    </h3>
+                    <p className="muted diary-manual-copy">
+                      不用等推荐，想到什么就直接写进日记。
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      setMenuExpanded((expanded) => !expanded)
-                    }
-                    className="secondary-button flex w-full items-center justify-center gap-2 py-3 text-sm"
+                    onClick={() => startVoiceInput("diary")}
+                    className="btn btn-ghost voice-btn"
                   >
-                    {menuExpanded ? (
-                      <>
-                        收起菜单 <ChevronUp size={16} />
-                      </>
-                    ) : (
-                      <>
-                        展开剩余 {hiddenMenuCount} 道
-                        <ChevronDown size={16} />
-                      </>
-                    )}
+                    <Mic size={18} />
+                    {voiceTarget === "diary" ? "听你说" : "语音"}
                   </button>
-                )}
+                </div>
+                <div className="diary-manual-inputs">
+                  <input
+                    value={manualDiaryFood}
+                    onChange={(event) =>
+                      setManualDiaryFood(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        addManualDiary();
+                      }
+                    }}
+                    placeholder="比如：番茄炒蛋、牛肉面、今天自己煮了粥"
+                    className="input"
+                  />
+                  <input
+                    value={manualDiaryNote}
+                    onChange={(event) =>
+                      setManualDiaryNote(event.target.value)
+                    }
+                    placeholder="状态备注，可不填"
+                    className="input"
+                  />
+                  <button
+                    type="button"
+                    onClick={addManualDiary}
+                    className="btn btn-accent"
+                  >
+                    记录
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* 灵感 */}
-      {page === "discover" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-5">
-          <div className="inspiration-board p-6">
-            <p className="text-sm text-gray-400 mb-3">
-              今天先想一个方向
-            </p>
-            <textarea
-              value={manualInspiration}
-              onChange={(event) =>
-                setManualInspiration(event.target.value)
-              }
-              placeholder="比如：想吃有汤水的、想把冰箱鸡蛋用掉、想吃一点酸甜口"
-              className="app-input min-h-28 w-full resize-none px-4 py-3"
-            />
-            <div className="grid grid-cols-3 gap-3 mt-4">
-              <button
-                onClick={addManualInspiration}
-                className="primary-button py-3"
-              >
-                记下
-              </button>
-              <button
-                onClick={() => startVoiceInput("inspiration")}
-                className="secondary-button py-3"
-              >
-                {voiceTarget === "inspiration" ? "听你说" : "语音"}
-              </button>
-              <button
-                onClick={addRandomInspiration}
-                className="secondary-button py-3"
-              >
-                翻一张
-              </button>
+              {likedMeals.length === 0 ? (
+                <div className="card-flat empty-state diary-empty">
+                  还没有记录，今天去吃点什么吧
+                </div>
+              ) : (
+                <div id="meal-wall" className="diary-wall">
+                  {groupMeals(memory).map((group) => (
+                    <section key={group.title}>
+                      <h3 className="eyebrow diary-section-label">
+                        {group.title}
+                      </h3>
+                      <div className="diary-grid">
+                        {group.items.map((item, index) => (
+                          <MealCard
+                            key={item.food + item.time}
+                            item={item}
+                            photoUrls={photoUrls}
+                            onSelect={setSelectedMeal}
+                            index={index}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+
+              {insights.map((item, index) => {
+                const lines = item.split("\n");
+
+                return (
+                  <div key={index} className="card-flat insight-card">
+                    <h2 className="font-display insight-title">
+                      {lines[0]}
+                    </h2>
+                    <p className="muted insight-copy">{lines[1]}</p>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          )}
+        </section>
+      </div>
 
-          <button
-            onClick={() =>
-              void generateInspirations()
-            }
-            className="primary-button w-full py-4 text-lg"
-          >
-            AI 补满灵感墙
-          </button>
-
-          <div className="grid gap-4">
-            {inspirations.map(
-              (item, index) => (
-                <button
-                  key={`${item.title}-${index}`}
-                  onClick={() => {
-                    setMood((prev) =>
-                      uniq([...prev, item.title]).slice(-4)
-                    );
-                    setPage("today");
-                  }}
-                  className="inspiration-card pressable w-full text-left p-6"
-                >
-                  <span className="inspiration-index">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <h2 className="text-2xl font-semibold leading-tight mt-4">
-                    {item.title}
-                  </h2>
-
-                  <p className="muted-text mt-4 leading-8">
-                    {item.desc}
-                  </p>
-                </button>
-              )
-            )}
-          </div>
+      <nav className="bottom-nav">
+        <div className="tabbar">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setPage(item.id)}
+              className={page === item.id ? "tab-btn is-on" : "tab-btn"}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
-      )}
+      </nav>
 
       {selectedMeal && (
         <div
@@ -3209,11 +3416,11 @@ export default function Home() {
             </div>
 
             {selectedMealImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <FoodPhoto
                 src={selectedMealImage}
-                alt={selectedMeal.food}
-                className="max-h-[52vh] w-full object-cover"
+                label={selectedMeal.food}
+                ratio="1.15"
+                className="meal-detail-photo"
               />
             ) : (
               <div className="meal-detail-photo-empty">
@@ -3252,69 +3459,6 @@ export default function Home() {
           </motion.div>
         </div>
       )}
-
-      {/* 底部导航 */}
-      <div className="fixed bottom-0 left-0 w-full">
-        <div className="bottom-nav-shell max-w-xl mx-auto px-3 sm:px-6">
-          <div className="tab-bar flex justify-around py-4">
-            <button
-              onClick={() =>
-                setPage("today")
-              }
-              className={`tab-item ${
-                page === "today"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              今天吃啥
-            </button>
-
-            <button
-              onClick={() =>
-                setPage("menu")
-              }
-              className={`tab-item ${
-                page === "menu"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              我的菜单
-            </button>
-
-            <button
-              onClick={() =>
-                setPage("discover")
-              }
-              className={`tab-item ${
-                page === "discover"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              灵感
-            </button>
-
-            <button
-              onClick={() =>
-                setPage("recent")
-              }
-              className={`tab-item ${
-                page === "recent"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              饮食日记
-            </button>
-          </div>
-        </div>
-      </div>
     </main>
   );
 }
