@@ -2,8 +2,8 @@ import "./globals.css";
 import { Toaster } from "sonner";
 
 export const metadata = {
-  title: "吃啥 · 暖食帖",
-  description: "为今天吃什么而生的暖食决策工具",
+  title: "吃啥？",
+  description: "AI Food Mood Engine",
 };
 
 export default function RootLayout({
