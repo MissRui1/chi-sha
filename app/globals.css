@@ -88,6 +88,7 @@ input:focus-visible {
 .empty-state,
 .recipe-suggestion,
 .sync-panel,
+.location-card,
 .meal-card {
   background: var(--surface-inset);
   border: 1px solid var(--border);

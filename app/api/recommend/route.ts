@@ -41,6 +41,20 @@ const MemorySchema = z.union([
     .passthrough(),
 ]);
 
+const LocationSchema = z
+  .object({
+    source: z.string().max(40).optional(),
+    province: z.string().max(40).optional(),
+    city: z.string().max(40).optional(),
+    district: z.string().max(80).optional(),
+    township: z.string().max(80).optional(),
+    adcode: z.string().max(20).optional(),
+    formattedAddress: z.string().max(200).optional(),
+    nearbyFoodPois: z.string().max(500).optional(),
+  })
+  .partial()
+  .optional();
+
 const RecommendRequestSchema = z.object({
   userId: z.string().optional(),
   mealTime: z.string().optional(),
@@ -52,6 +66,7 @@ const RecommendRequestSchema = z.object({
   memory: z.array(MemorySchema).max(120).optional(),
   currentTime: z.string().optional(),
   timezone: z.string().optional(),
+  location: LocationSchema,
 });
 
 const RecommendSchema = z.object({
@@ -419,7 +434,8 @@ const getWeatherContext = (month: number): string => {
 
 const generateContext = (
   timeInfo: TimeContext,
-  mealTime: string
+  mealTime: string,
+  location?: z.infer<typeof LocationSchema>
 ): string => {
   const contextParts: string[] = [];
 
@@ -483,6 +499,29 @@ const generateContext = (
 
   if (weatherContext) {
     contextParts.push(`【季节背景】${weatherContext}`);
+  }
+
+  if (location) {
+    const place = [
+      location.province,
+      location.city,
+      location.district,
+      location.township,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    if (place || location.formattedAddress) {
+      contextParts.push(
+        `【位置背景】用户当前位置：${place || location.formattedAddress}。推荐应考虑当地常见餐饮和现实可获得性，但不要编造具体店名。`
+      );
+    }
+
+    if (location.nearbyFoodPois) {
+      contextParts.push(
+        `【附近餐饮参考】${location.nearbyFoodPois}。这些只作为附近餐饮环境参考，不要承诺一定营业或可下单。`
+      );
+    }
   }
 
   return contextParts.join("\n");
@@ -647,7 +686,8 @@ export async function POST(req: Request) {
     const history = body.history ?? [];
     const contextPrompt = generateContext(
       getTimeInfo(body.currentTime, body.timezone),
-      mealTime
+      mealTime,
+      body.location
     );
     const historyText =
       history.join("、") || "暂无";

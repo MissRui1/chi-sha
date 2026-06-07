@@ -18,6 +18,16 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Environment Variables
+
+Server-side location lookup uses Amap Web Service API. Configure the key in Vercel or `.env.local`:
+
+```bash
+AMAP_WEB_SERVICE_KEY=your_amap_web_service_key
+```
+
+The browser obtains user permission for latitude/longitude, then `/api/location` calls Amap reverse geocoding on the server. The key is not exposed to client-side code.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

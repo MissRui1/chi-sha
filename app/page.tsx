@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Cloud,
+  LocateFixed,
   LogOut,
   RefreshCw,
   UserRound,
@@ -84,6 +85,27 @@ type FateResult = {
 type InspirationItem = {
   title: string;
   desc: string;
+};
+
+type UserLocation = {
+  source: "browser-geolocation" | "ip";
+  provider: "amap";
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  province?: string;
+  city?: string;
+  district?: string;
+  township?: string;
+  adcode?: string;
+  formattedAddress?: string;
+  nearbyPois?: Array<{
+    name: string;
+    type?: string;
+    address?: string;
+    distance?: number;
+    location?: string;
+  }>;
 };
 
 type SyncRecord = {
@@ -342,6 +364,57 @@ const getClientContext = () => ({
     Intl.DateTimeFormat().resolvedOptions().timeZone ||
     "Asia/Shanghai",
 });
+
+const getLocationLabel = (location: UserLocation | null) => {
+  if (!location) {
+    return "未定位";
+  }
+
+  return (
+    [
+      location.city,
+      location.district,
+      location.township,
+    ]
+      .filter(Boolean)
+      .join(" · ") ||
+    location.formattedAddress ||
+    "已定位"
+  );
+};
+
+const formatLocationForPrompt = (
+  location: UserLocation | null
+) => {
+  if (!location) {
+    return undefined;
+  }
+
+  const nearby =
+    location.nearbyPois
+      ?.slice(0, 5)
+      .map((poi) =>
+        [
+          poi.name,
+          poi.distance ? `${poi.distance}米` : "",
+          poi.type,
+        ]
+          .filter(Boolean)
+          .join("/")
+      )
+      .join("、") || "";
+
+  return {
+    source: location.source,
+    province: location.province,
+    city: location.city,
+    district: location.district,
+    township: location.township,
+    adcode: location.adcode,
+    formattedAddress: location.formattedAddress,
+    nearbyFoodPois: nearby,
+  };
+};
 
 const inferMealTime = () => {
   const hour = new Date().getHours();
@@ -810,6 +883,15 @@ export default function Home() {
 
   const [style, setStyle] =
     useState<string[]>(["中餐"]);
+
+  const [userLocation, setUserLocation] =
+    useState<UserLocation | null>(null);
+
+  const [locationLoading, setLocationLoading] =
+    useState(false);
+
+  const [locationError, setLocationError] =
+    useState("");
 
   const [userId, setUserId] = useState("");
 
@@ -1304,6 +1386,87 @@ export default function Home() {
     recognition.start();
   };
 
+  const fetchLocationByIp = async () => {
+    const response = await fetch("/api/location", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const errorData = (await response
+        .json()
+        .catch(() => null)) as { error?: string } | null;
+
+      throw new Error(errorData?.error ?? "定位失败");
+    }
+
+    return (await response.json()) as UserLocation;
+  };
+
+  const locateUser = async () => {
+    setLocationLoading(true);
+    setLocationError("");
+
+    try {
+      if (!navigator.geolocation) {
+        const fallbackLocation = await fetchLocationByIp();
+        setUserLocation(fallbackLocation);
+        toast.success("已使用城市级定位");
+        return;
+      }
+
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            maximumAge: 5 * 60 * 1000,
+            timeout: 9000,
+          });
+        }
+      );
+
+      const response = await fetch("/api/location", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response
+          .json()
+          .catch(() => null)) as { error?: string } | null;
+
+        throw new Error(errorData?.error ?? "定位失败");
+      }
+
+      const data = (await response.json()) as UserLocation;
+      setUserLocation(data);
+      toast.success(`已定位到 ${getLocationLabel(data)}`);
+    } catch (error) {
+      try {
+        const fallbackLocation = await fetchLocationByIp();
+        setUserLocation(fallbackLocation);
+        toast.success("精确定位未完成，已使用城市级定位");
+      } catch (fallbackError) {
+        const message =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : error instanceof Error
+              ? error.message
+              : "定位失败";
+        setLocationError(message);
+        toast.error(message);
+      }
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
   // 灵感 AI
   const generateInspirations =
     useCallback(async () => {
@@ -1632,6 +1795,7 @@ export default function Home() {
             retry,
             previousFood: food,
             ...getClientContext(),
+            location: formatLocationForPrompt(userLocation),
             history: memorySource
               .filter((item) => item.type === "like")
               .map((item) => item.food)
@@ -2212,6 +2376,45 @@ export default function Home() {
       {page === "today" && (
         <div className="max-w-xl mx-auto px-6 mt-10">
           <div className="surface-card p-8 space-y-10">
+            <div className="location-card p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-400 mb-2">
+                    附近定位
+                  </p>
+                  <h3 className="font-semibold leading-tight">
+                    {getLocationLabel(userLocation)}
+                  </h3>
+                  <p className="muted-text mt-2 text-sm leading-6">
+                    {userLocation?.nearbyPois?.length
+                      ? `附近参考：${userLocation.nearbyPois
+                          .slice(0, 3)
+                          .map((poi) => poi.name)
+                          .join("、")}`
+                      : "用于结合城市、区县和附近餐饮环境推荐。"}
+                  </p>
+                  {locationError && (
+                    <p className="mt-2 text-xs text-red-500">
+                      {locationError}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void locateUser()}
+                  disabled={locationLoading}
+                  className="secondary-button inline-flex shrink-0 items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  <LocateFixed size={16} />
+                  {locationLoading
+                    ? "定位中"
+                    : userLocation
+                      ? "更新"
+                      : "定位"}
+                </button>
+              </div>
+            </div>
+
             {/* 时间 */}
             <div>
               <p className="text-sm text-gray-400 mb-4">
