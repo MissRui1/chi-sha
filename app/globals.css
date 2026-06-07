@@ -1439,6 +1439,21 @@ input:focus-visible {
   gap: 0.7rem;
 }
 
+.panel-actions .btn,
+.cook-actions .btn,
+.insp-actions .btn {
+  min-height: 2.8rem;
+}
+
+.cook-action-btn {
+  min-width: 7.6rem;
+  padding: 0.85rem 1.05rem;
+}
+
+.cook-action-wide {
+  min-width: min(100%, 14rem);
+}
+
 .cook-card {
   display: grid;
   gap: 0.4rem;
@@ -1488,6 +1503,42 @@ input:focus-visible {
 
 .menu-photo {
   width: 100%;
+}
+
+.menu-image-action {
+  position: absolute;
+  right: 0.65rem;
+  bottom: 0.65rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: calc(100% - 1.3rem);
+  min-height: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  background: rgba(20, 24, 16, 0.58);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.45rem 0.65rem;
+  backdrop-filter: blur(8px);
+  transition:
+    background 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.menu-image-action:hover:not(:disabled) {
+  background: rgba(20, 24, 16, 0.72);
+  transform: translateY(-1px);
+}
+
+.menu-image-action:disabled {
+  cursor: progress;
+  opacity: 0.72;
 }
 
 .menu-card-body {
@@ -1541,6 +1592,11 @@ input:focus-visible {
 .insp-actions .btn:first-child {
   flex: 1;
   padding: 0.9rem;
+}
+
+.insp-secondary-btn {
+  flex: 0 0 7.2rem;
+  padding: 0.9rem 1rem;
 }
 
 .insp-add-row {
@@ -1930,6 +1986,8 @@ input:focus-visible {
   .identify-card,
   .diary-head-row,
   .diary-manual-head,
+  .cook-actions,
+  .insp-actions,
   .result-actions,
   .insp-add-row {
     align-items: stretch;
@@ -1938,6 +1996,8 @@ input:focus-visible {
 
   .loc-btn,
   .export-btn,
+  .cook-action-btn,
+  .insp-secondary-btn,
   .voice-btn {
     width: 100%;
   }
@@ -2071,6 +2131,11 @@ input:focus-visible {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 1.2rem;
+  }
+
+  .cook-actions {
+    min-width: 16rem;
+    justify-content: flex-end;
   }
 
   .cook-loading,

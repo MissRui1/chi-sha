@@ -262,6 +262,8 @@ npm run lint
 | `AI_BASE_URL` | 否 | `https://api.openai-next.com/v1` | OpenAI 兼容 API 地址 |
 | `AI_MODEL` | 否 | `gemini-3.1-flash-image-preview` | 灵感、做饭、识图等通用 AI 模型 |
 | `RECOMMEND_AI_MODEL` | 否 | `qwen3-max` | 今日推荐专用模型 |
+| `IMAGE_AI_MODEL` | 否 | `gpt-image-1-mini` | 我的菜单菜品图生成模型 |
+| `IMAGE_MODEL` | 否 | 无 | 菜品图生成模型兼容变量；优先级低于 `IMAGE_AI_MODEL` |
 | `AMAP_WEB_SERVICE_KEY` | 定位功能必填 | 无 | 高德 Web Service Key |
 | `GAODE_WEB_SERVICE_KEY` | 否 | 无 | 高德 key 兼容变量 |
 | `AMAP_KEY` | 否 | 无 | 高德 key 兼容变量 |
@@ -273,6 +275,7 @@ npm run lint
 没有配置 AI key 时，页面仍可打开，但 AI 推荐、识图、灵感和做饭接口会失败。  
 没有配置高德 key 时，定位功能不可用，但用户仍可以手动使用推荐。  
 没有配置 KV / Upstash 时，账号同步不可用，但本地饮食日记和菜单仍能正常保存。
+没有配置图片模型时，“我的菜单”仍会显示菜名图卡；点击“生成菜图”会提示配置问题，不会再展示与菜名不匹配的随机图片。
 
 ## 🧩 API 一览
 
@@ -282,6 +285,7 @@ npm run lint
 | `/api/cook` | `POST` | 从用户菜单或识别食材中生成家常菜建议 |
 | `/api/identify` | `POST` | 识别图片中的食材、成品菜或非食物 |
 | `/api/inspiration` | `POST` | 生成饮食灵感方向 |
+| `/api/dish-image` | `POST` | 按菜名生成我的菜单菜品图 |
 | `/api/location` | `GET` | 通过 IP 获取城市级定位 |
 | `/api/location` | `POST` | 通过经纬度调用高德逆地理编码 |
 | `/api/sync` | `POST` | 拉取或保存账号同步数据 |
@@ -297,6 +301,7 @@ npm run lint
 | 我的菜单 | `localStorage` |
 | 饮食日记文字记录 | `localStorage` |
 | 饭菜照片 | `IndexedDB` |
+| 我的菜单 AI 菜图 | `IndexedDB` |
 
 ### ☁️ 云同步
 
@@ -318,6 +323,8 @@ npm run lint
 - 输出格式：JPEG。
 
 拍照识别时，压缩后的图片会发送给 AI 服务商进行识别。饮食日记照片默认优先保存在本地 IndexedDB；登录同步时才会尝试同步部分照片。
+
+我的菜单菜图通过 `/api/dish-image` 按菜名生成，并优先缓存在 IndexedDB；没有生成图时使用菜名 fallback，避免显示不匹配的随机食物图。
 
 ## 🗂️ 目录结构
 

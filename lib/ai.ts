@@ -5,6 +5,7 @@ const DEFAULT_AI_BASE_URL =
 const DEFAULT_AI_MODEL =
   "gemini-3.1-flash-image-preview";
 const DEFAULT_RECOMMEND_MODEL = "qwen3-max";
+const DEFAULT_IMAGE_MODEL = "gpt-image-1-mini";
 
 const readEnv = (value: string | undefined) => {
   const trimmed = value?.trim();
@@ -17,6 +18,11 @@ export const getAiModel = () =>
 export const getRecommendModel = () =>
   readEnv(process.env.RECOMMEND_AI_MODEL) ??
   DEFAULT_RECOMMEND_MODEL;
+
+export const getImageModel = () =>
+  readEnv(process.env.IMAGE_AI_MODEL) ??
+  readEnv(process.env.IMAGE_MODEL) ??
+  DEFAULT_IMAGE_MODEL;
 
 export const createAiClient = () => {
   const apiKey =

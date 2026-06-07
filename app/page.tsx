@@ -94,6 +94,11 @@ type FateResult = {
   source: string;
 };
 
+type MenuImageRecord = {
+  imageUrl?: string;
+  imageId?: string;
+};
+
 type InspirationItem = {
   title: string;
   desc: string;
@@ -234,6 +239,54 @@ const getMenuPhoto = (dish: string, index: number) =>
       )
     ) % menuPhotoPool.length
   ];
+
+const getCookMomentText = (mealTime: string) => {
+  if (mealTime === "早餐") {
+    return {
+      eyebrow: "早上做什么",
+      title: "帮我决定早上做什么",
+      desc: "让 AI 从你的菜单里挑一道适合早上的选择。",
+      identify: "拍一下现有食材，帮你想早上做什么",
+    };
+  }
+
+  if (mealTime === "午餐") {
+    return {
+      eyebrow: "中午做什么",
+      title: "帮我决定中午做什么",
+      desc: "让 AI 从你的菜单里挑一道适合中午的选择。",
+      identify: "拍一下现有食材，帮你想中午做什么",
+    };
+  }
+
+  if (mealTime === "夜宵") {
+    return {
+      eyebrow: "夜宵做什么",
+      title: "帮我决定夜宵做什么",
+      desc: "让 AI 从你的菜单里挑一道适合夜里的轻松选择。",
+      identify: "拍一下现有食材，帮你想夜宵做什么",
+    };
+  }
+
+  if (mealTime === "奶茶") {
+    return {
+      eyebrow: "今天喝什么",
+      title: "帮我决定今天喝什么",
+      desc: "让 AI 从你的菜单和偏好里挑一个今天适合的饮品方向。",
+      identify: "拍一下现有食材，帮你想今天喝什么",
+    };
+  }
+
+  return {
+    eyebrow: "晚上做什么",
+    title: "帮我决定晚上做什么",
+    desc: "让 AI 从你的菜单里挑一道适合晚上的选择。",
+    identify: "拍一下现有食材，帮你想晚上做什么",
+  };
+};
+
+const getMenuImageKey = (userId: string, dish: string) =>
+  `dish_image:${userId || "anon"}:${normalizeDishName(dish)}`;
 
 const randomInspirationPrompts: InspirationItem[] = [
   {
@@ -1103,6 +1156,15 @@ export default function Home() {
   const [menuExpanded, setMenuExpanded] =
     useState(false);
 
+  const [menuImageUrls, setMenuImageUrls] =
+    useState<Record<string, string>>({});
+
+  const [menuImageLoading, setMenuImageLoading] =
+    useState<Record<string, boolean>>({});
+
+  const [menuImageErrors, setMenuImageErrors] =
+    useState<Record<string, boolean>>({});
+
   // 做饭 AI
   const [cookResult, setCookResult] =
     useState<CookResult | null>(null);
@@ -1259,6 +1321,43 @@ export default function Home() {
       cancelled = true;
     };
   }, [memory, missingPhotoIds, photoUrls, userId]);
+
+  useEffect(() => {
+    if (!userId || myMenu.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const uniqueMenu = uniq(myMenu);
+
+    void Promise.all(
+      uniqueMenu.map(async (dish) => {
+        const imageId = getMenuImageKey(userId, dish);
+        const cached = await readMealPhoto(imageId, userId);
+        return [dish, cached] as const;
+      })
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+
+      setMenuImageUrls((prev) => {
+        const next = { ...prev };
+
+        entries.forEach(([dish, imageUrl]) => {
+          if (imageUrl) {
+            next[dish] = imageUrl;
+          }
+        });
+
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [myMenu, userId]);
 
   const toggleValue = (
     value: string,
@@ -1755,6 +1854,76 @@ export default function Home() {
 
     if (saveMenu(updated)) {
       toast.success("已从菜单删除");
+    }
+  };
+
+  const generateMenuImage = async (dish: string) => {
+    const uid = ensureUser();
+
+    if (menuImageLoading[dish]) {
+      return;
+    }
+
+    setMenuImageLoading((prev) => ({
+      ...prev,
+      [dish]: true,
+    }));
+    setMenuImageErrors((prev) => ({
+      ...prev,
+      [dish]: false,
+    }));
+
+    try {
+      const response = await fetch("/api/dish-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dish }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response
+          .json()
+          .catch(() => null)) as { error?: string } | null;
+
+        throw new Error(errorData?.error ?? "菜图生成失败");
+      }
+
+      const data = (await response.json()) as MenuImageRecord;
+
+      if (!data.imageUrl) {
+        throw new Error("菜图生成失败");
+      }
+
+      const imageUrl = data.imageUrl;
+      const imageId = getMenuImageKey(uid, dish);
+
+      if (imageUrl.startsWith("data:image/")) {
+        await cacheMealPhoto(imageId, imageUrl, uid);
+      }
+
+      setMenuImageUrls((prev) => ({
+        ...prev,
+        [dish]: imageUrl,
+      }));
+      toast.success(`已生成「${dish}」的菜图`);
+    } catch (error) {
+      console.log(error);
+      setMenuImageErrors((prev) => ({
+        ...prev,
+        [dish]: true,
+      }));
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "菜图生成失败，请检查图片模型配置"
+      );
+    } finally {
+      setMenuImageLoading((prev) => ({
+        ...prev,
+        [dish]: false,
+      }));
     }
   };
 
@@ -2396,6 +2565,7 @@ export default function Home() {
   const inspirationItems = inspirations.length
     ? inspirations
     : randomInspirationPrompts;
+  const cookMoment = getCookMomentText(mealTime);
   const navItems = [
     {
       id: "today",
@@ -2857,7 +3027,7 @@ export default function Home() {
                     拍冰箱
                   </span>
                   <h3 className="font-display identify-title">
-                    拍一下现有食材，<br />帮你想今晚做什么
+                    {cookMoment.identify}
                   </h3>
                   <p className="muted identify-desc">
                     拍冰箱、案板或剩菜，先识别能用的食材，再生成顺手的清库存家常菜。
@@ -2943,7 +3113,7 @@ export default function Home() {
 
               <div ref={cookCardRef} className="card-flat cook-card scroll-mt-6">
                 <div>
-                  <span className="eyebrow">今晚做什么</span>
+                  <span className="eyebrow">{cookMoment.eyebrow}</span>
                   {cookResult ? (
                     <>
                       <h2 className="font-display panel-title">
@@ -2953,7 +3123,7 @@ export default function Home() {
                     </>
                   ) : (
                     <p className="muted panel-copy">
-                      让 AI 从你的菜单里帮你决定今晚做什么。
+                      {cookMoment.desc}
                     </p>
                   )}
                 </div>
@@ -2963,15 +3133,15 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => setShowCookRecipe(true)}
-                        className="btn btn-primary"
+                        className="btn btn-primary cook-action-btn"
                       >
-                        就做这个
+                        看做法
                       </button>
                       <button
                         type="button"
                         onClick={() => void generateCookAI()}
                         disabled={cookLoading}
-                        className="btn btn-ghost"
+                        className="btn btn-ghost cook-action-btn"
                       >
                         换一个
                       </button>
@@ -2981,10 +3151,10 @@ export default function Home() {
                       type="button"
                       onClick={() => void generateCookAI()}
                       disabled={myMenu.length === 0 || cookLoading}
-                      className="btn btn-primary"
+                      className="btn btn-primary cook-action-btn cook-action-wide"
                     >
                       <Sparkles size={18} />
-                      {cookLoading ? "正在想" : "帮我决定今晚做什么"}
+                      {cookLoading ? "正在想" : cookMoment.title}
                     </button>
                   )}
                 </div>
@@ -3084,19 +3254,35 @@ export default function Home() {
                         style={{ animationDelay: index * 30 + "ms" }}
                       >
                         <FoodPhoto
-                          src={getMenuPhoto(dish, index)}
+                          src={menuImageUrls[dish]}
                           label={dish}
                           ratio="1.25"
                           className="menu-photo"
-                        />
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void generateMenuImage(dish)}
+                            disabled={menuImageLoading[dish]}
+                            className="menu-image-action"
+                          >
+                            <Sparkles size={13} />
+                            {menuImageUrls[dish]
+                              ? "重生成"
+                              : menuImageLoading[dish]
+                                ? "生成中"
+                                : "生成菜图"}
+                          </button>
+                        </FoodPhoto>
                         <div className="menu-card-body">
                           <div className="font-display menu-card-title">
                             {dish}
                           </div>
                           <div className="muted menu-card-note">
-                            {index < defaultMenuDishes.length
-                              ? "家常 · 可快速决定"
-                              : "新加入 · 我的菜单"}
+                            {menuImageUrls[dish]
+                              ? "AI 菜图 · 已匹配"
+                              : menuImageErrors[dish]
+                                ? "菜图待生成 · 检查图片模型"
+                                : "菜名图卡 · 可生成匹配菜图"}
                           </div>
                         </div>
                         <button
@@ -3156,8 +3342,9 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={addRandomInspiration}
-                  className="btn btn-ghost"
+                  className="btn btn-ghost insp-secondary-btn"
                 >
+                  <RefreshCw size={17} />
                   翻一张
                 </button>
               </div>
