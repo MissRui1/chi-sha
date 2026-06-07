@@ -31,6 +31,8 @@ yarn-error.log*
 .pnpm-debug.log*
 dev-server.log
 dev-server.err.log
+dev-server-*.log
+dev-server-*.err.log
 vercel-login.log
 vercel-login.err.log
 .npm-cache/
@@ -48,3 +50,4 @@ vercel-login.err.log
 next-env.d.ts
 
 .vercel
+data/out/

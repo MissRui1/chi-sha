@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "data:normalize": "node scripts/poi-normalize.mjs",
+    "data:robots": "node scripts/robots-check.mjs",
+    "data:smoke": "node scripts/fetch-smoke.mjs"
   },
   "dependencies": {
     "browser-image-compression": "^2.0.2",

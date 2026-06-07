@@ -1,0 +1,20 @@
+{
+  "sources": [
+    {
+      "name": "merchant_authorized_upload",
+      "kind": "file",
+      "license": "merchant_authorized",
+      "input": "data/samples/dianping-food-poi-sample.json",
+      "notes": "商家授权、采购数据、开放平台导出的 POI 文件都可以先按这个入口接入。"
+    },
+    {
+      "name": "owned_site_menu_pages",
+      "kind": "http",
+      "license": "owned_or_authorized",
+      "seedUrls": ["https://example.com/restaurants"],
+      "userAgent": "ChiShaResearchBot/0.1 (+contact@example.com)",
+      "rateLimitMs": 3000,
+      "notes": "仅用于自有站点或已获得书面授权的数据源。"
+    }
+  ]
+}
