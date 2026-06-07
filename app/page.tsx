@@ -2239,14 +2239,46 @@ export default function Home() {
   const selectedMealImage = selectedMeal
     ? getMemoryImageUrl(selectedMeal, photoUrls)
     : undefined;
+  const tabs = [
+    { key: "today", label: "今天吃啥", note: "AI 推荐" },
+    { key: "menu", label: "我的菜单", note: "家常菜" },
+    { key: "discover", label: "灵感", note: "吃饭方向" },
+    { key: "recent", label: "饮食日记", note: "认真吃过" },
+  ];
 
   return (
     <main className="app-shell min-h-screen pb-40">
+      <aside className="desktop-sidebar">
+        <div className="side-brand">
+          <span className="brand-mark">吃啥</span>
+          <span className="brand-tag">暖食帖</span>
+        </div>
+        <nav className="side-nav" aria-label="主导航">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setPage(tab.key)}
+              className={`side-link ${
+                page === tab.key ? "side-link-active" : ""
+              }`}
+            >
+              <span>{tab.label}</span>
+              <small>{tab.note}</small>
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <p>好好吃饭，别纠结。</p>
+        </div>
+      </aside>
+
       {/* 顶部 */}
-      <div className="max-w-xl mx-auto px-6 pt-12">
+      <div className="app-header max-w-xl mx-auto px-6 pt-12">
         <div className="relative flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-5xl font-semibold tracking-tight">
+            <p className="kicker">好好吃饭 · 别将就</p>
+            <h1 className="app-title text-5xl font-semibold tracking-tight">
               {pageTitle}
             </h1>
 
@@ -2374,8 +2406,8 @@ export default function Home() {
 
       {/* 首页 */}
       {page === "today" && (
-        <div className="max-w-xl mx-auto px-6 mt-10">
-          <div className="surface-card p-8 space-y-10">
+        <div className="page-content today-content max-w-xl mx-auto px-6 mt-10">
+          <div className="surface-card today-control-panel p-8 space-y-10">
             <div className="location-card p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -2647,7 +2679,7 @@ export default function Home() {
 
       {/* 饮食日记 */}
       {page === "recent" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-6">
+        <div className="page-content recent-content max-w-xl mx-auto px-6 mt-10 space-y-6">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-3xl font-semibold">
@@ -2765,7 +2797,7 @@ export default function Home() {
 
       {/* 我的菜单 */}
       {page === "menu" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-6">
+        <div className="page-content menu-content max-w-xl mx-auto px-6 mt-10 space-y-6">
           {/* AI 推荐 */}
           <div ref={cookCardRef} className="surface-card p-8 scroll-mt-6">
             <p className="text-sm text-gray-400 mb-4">
@@ -3096,7 +3128,7 @@ export default function Home() {
 
       {/* 灵感 */}
       {page === "discover" && (
-        <div className="max-w-xl mx-auto px-6 mt-10 space-y-5">
+        <div className="page-content discover-content max-w-xl mx-auto px-6 mt-10 space-y-5">
           <div className="inspiration-board p-6">
             <p className="text-sm text-gray-400 mb-3">
               今天先想一个方向
@@ -3254,64 +3286,21 @@ export default function Home() {
       )}
 
       {/* 底部导航 */}
-      <div className="fixed bottom-0 left-0 w-full">
+      <div className="mobile-bottom-nav fixed bottom-0 left-0 w-full">
         <div className="bottom-nav-shell max-w-xl mx-auto px-3 sm:px-6">
           <div className="tab-bar flex justify-around py-4">
-            <button
-              onClick={() =>
-                setPage("today")
-              }
-              className={`tab-item ${
-                page === "today"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              今天吃啥
-            </button>
-
-            <button
-              onClick={() =>
-                setPage("menu")
-              }
-              className={`tab-item ${
-                page === "menu"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              我的菜单
-            </button>
-
-            <button
-              onClick={() =>
-                setPage("discover")
-              }
-              className={`tab-item ${
-                page === "discover"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              灵感
-            </button>
-
-            <button
-              onClick={() =>
-                setPage("recent")
-              }
-              className={`tab-item ${
-                page === "recent"
-                  ? "tab-item-active"
-                  : ""
-              }`}
-            >
-              <span className="tab-dot" />
-              饮食日记
-            </button>
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setPage(tab.key)}
+                className={`tab-item ${
+                  page === tab.key ? "tab-item-active" : ""
+                }`}
+              >
+                <span className="tab-dot" />
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
