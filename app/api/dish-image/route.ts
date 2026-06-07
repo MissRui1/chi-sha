@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createAiClient, getImageModel } from "@/lib/ai";
+import { createImageAiClient, getImageModel } from "@/lib/ai";
 
 const DishImageRequestSchema = z.object({
   dish: z.string().trim().min(1).max(60),
@@ -29,7 +29,7 @@ const imageToDataUrl = (image: {
 export async function POST(req: Request) {
   try {
     const { dish } = DishImageRequestSchema.parse(await req.json());
-    const client = createAiClient();
+    const client = createImageAiClient();
     const response = await client.images.generate({
       model: getImageModel(),
       prompt: buildDishImagePrompt(dish),

@@ -262,7 +262,9 @@ npm run lint
 | `AI_BASE_URL` | 否 | `https://api.openai-next.com/v1` | OpenAI 兼容 API 地址 |
 | `AI_MODEL` | 否 | `gemini-3.1-flash-image-preview` | 灵感、做饭、识图等通用 AI 模型 |
 | `RECOMMEND_AI_MODEL` | 否 | `qwen3-max` | 今日推荐专用模型 |
-| `IMAGE_AI_MODEL` | 否 | `gpt-image-1-mini` | 我的菜单菜品图生成模型 |
+| `OPENAI_IMAGE_API_KEY` | 菜品图生成必填 | 无 | OpenAI 图片生成密钥；不影响推荐、识图等通用 AI |
+| `OPENAI_IMAGE_BASE_URL` | 否 | `https://api.openai.com/v1` | OpenAI 图片生成 API 地址 |
+| `IMAGE_AI_MODEL` | 否 | `gpt-image-1` | 我的菜单菜品图生成模型 |
 | `IMAGE_MODEL` | 否 | 无 | 菜品图生成模型兼容变量；优先级低于 `IMAGE_AI_MODEL` |
 | `AMAP_WEB_SERVICE_KEY` | 定位功能必填 | 无 | 高德 Web Service Key |
 | `GAODE_WEB_SERVICE_KEY` | 否 | 无 | 高德 key 兼容变量 |

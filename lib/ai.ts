@@ -2,10 +2,12 @@ import OpenAI from "openai";
 
 const DEFAULT_AI_BASE_URL =
   "https://api.openai-next.com/v1";
+const DEFAULT_OPENAI_BASE_URL =
+  "https://api.openai.com/v1";
 const DEFAULT_AI_MODEL =
   "gemini-3.1-flash-image-preview";
 const DEFAULT_RECOMMEND_MODEL = "qwen3-max";
-const DEFAULT_IMAGE_MODEL = "gpt-image-1-mini";
+const DEFAULT_IMAGE_MODEL = "gpt-image-1";
 
 const readEnv = (value: string | undefined) => {
   const trimmed = value?.trim();
@@ -40,5 +42,24 @@ export const createAiClient = () => {
     baseURL:
       readEnv(process.env.AI_BASE_URL) ??
       DEFAULT_AI_BASE_URL,
+  });
+};
+
+export const createImageAiClient = () => {
+  const apiKey =
+    readEnv(process.env.OPENAI_IMAGE_API_KEY) ??
+    readEnv(process.env.OPENAI_API_KEY);
+
+  if (!apiKey) {
+    throw new Error(
+      "Missing OPENAI_IMAGE_API_KEY. OPENAI_API_KEY is supported as a fallback."
+    );
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL:
+      readEnv(process.env.OPENAI_IMAGE_BASE_URL) ??
+      DEFAULT_OPENAI_BASE_URL,
   });
 };
