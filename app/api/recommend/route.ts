@@ -155,14 +155,14 @@ const buildRegionalFoodContext = (
     place,
     dishes,
     prompt: [
-      "【地域美食策略】",
+      "【位置可获得性策略】",
       place
         ? `用户所在地：${place}。`
         : "用户所在地只获得了部分省市信息。",
-      `本地/周边特色候选：${dishText}。`,
-      "如果餐次、状态和禁忌不冲突，优先从这些候选里推荐；若候选不适合当前时段或用户状态，再选择同一地域常见、现实可获得的食物。",
-      "只能推荐菜品/小吃/饮品名称，不要编造具体店名，不要承诺附近一定能买到。",
-      "理由中可以自然提到所在地或本地口味，但必须像真实用户建议，避免旅游攻略腔。",
+      `城市常见供给参考：${dishText}。`,
+      "定位的目的不是生成旅游式当地特色，而是提高“用户附近真实买得到、吃得到”的概率。",
+      "优先综合附近餐饮参考、城市常见供给、餐次、状态和用户偏好；可以推荐全国连锁/常见快餐/家常餐，只要在该城市和附近环境里现实可获得。",
+      "不要为了本地特色而牺牲可购买性；不要编造具体店名、商圈名、营业状态或配送承诺。",
     ].join("\n"),
   };
 };
@@ -172,8 +172,7 @@ const validateRecommendation = (
   rules: RecommendationRules,
   mealTime: string,
   history: string[],
-  allowedPoolOverride?: string[],
-  requiredRegionalPool: string[] = []
+  allowedPoolOverride?: string[]
 ) => {
   const allowedPool =
     allowedPoolOverride ??
@@ -209,16 +208,6 @@ const validateRecommendation = (
     );
   }
 
-  if (
-    requiredRegionalPool.length > 0 &&
-    !requiredRegionalPool.some((food) =>
-      foodOverlaps(parsed.food, food)
-    )
-  ) {
-    throw new Error(
-      `AI ignored regional candidate pool: ${requiredRegionalPool.join(", ")}`
-    );
-  }
 };
 
 const generateRules = (
@@ -634,8 +623,7 @@ const formatMemory = (memory: MemoryPayload[]) =>
 const fallbackRecommendation = (
   mealTime: string,
   moodList: string[],
-  avoidFoods: string[] = [],
-  regionalFoods: string[] = []
+  avoidFoods: string[] = []
 ) => {
   const avoid = new Set(
     avoidFoods.map((item) =>
@@ -651,19 +639,6 @@ const fallbackRecommendation = (
           normalizeFoodText(item.food)
         )
     ) ?? items[0];
-
-  if (mealTime !== "奶茶" && regionalFoods.length > 0) {
-    const picked =
-      regionalFoods.find(
-        (food) => !avoid.has(normalizeFoodText(food))
-      ) ?? regionalFoods[0];
-
-    return {
-      food: picked,
-      reason:
-        "已经结合你所在省市优先挑本地常见口味，这一顿更像附近真实会想吃的选择。",
-    };
-  }
 
   if (mealTime === "奶茶") {
     return pick([
@@ -811,8 +786,9 @@ export async function POST(req: Request) {
 5. 禁止重复已推荐、已拒绝或本次换一换前的食物。
 6. food 必须逐字来自“允许菜品池”，不能自创菜名或输出同一菜的少油/低脂变体。
 7. 只返回 JSON，不要 markdown，不要额外字段。
-8. 如果已获得用户省市位置，且不是“奶茶”场景，优先推荐当地或周边有代表性的菜品/小吃；不得只给全国通用菜，除非当地候选与餐次、状态或禁忌冲突。
-9. 地域推荐只能基于省、市、区县信息和允许菜品池，不要编造餐厅名、商圈名、营业状态或配送承诺。
+8. 如果已获得用户省市或附近餐饮信息，必须把“附近买得到/吃得到”作为关键判断；不要为了地方特色而推荐用户现实中不方便获得的食物。
+9. 位置只用于判断供给环境和可获得性，不等于必须推荐当地特色；可以推荐城市里常见的连锁餐、快餐、家常餐或小吃。
+10. 不能编造具体店名、商圈名、营业状态或配送承诺。
 
 奶茶专属：
 - mealTime 为“奶茶”时 food 只能是具体茶饮名称。
@@ -836,8 +812,8 @@ ${styleStr}
 允许菜品池：
 ${dishPoolText}
 
-所在地特色候选：
-${regionalDishPool.length > 0 ? regionalDishPool.join("、") : "暂无明确所在地候选"}
+附近可获得性参考：
+${regionalDishPool.length > 0 ? regionalDishPool.join("、") : "暂无明确城市供给参考"}
 
 ${rules.banReasons ? `当前推荐规则：\n${rules.banReasons}\n` : ""}
 
@@ -860,7 +836,7 @@ ${retryText}
 重要约束：
 - 必须严格遵守上述推荐规则。
 - food 必须逐字来自允许菜品池。
-- 如果“所在地特色候选”不为空，优先从候选里选；确实不适合当前状态/餐次时，才从完整菜品池中选择。
+- “附近可获得性参考”只用于判断现实可买到的概率，不是必须命中的候选；最终以用户当前餐次、状态、想吃类型和附近供给共同决定。
 - 禁止列表中的食物绝对不能推荐。
 - 优先推荐列表中的关键词。
 - 不能重复已推荐过的食物。
@@ -893,15 +869,10 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
       fallback: fallbackRecommendation(
         mealTime,
         moodList,
-        history,
-        regionalDishPool
+        history
       ),
       temperature: getTemperature(mealTime),
       maxAttempts: 3,
-      repairPrompt:
-        regionalDishPool.length > 0
-          ? `上一次输出没有通过校验。必须从所在地特色候选中选择一个 food：${regionalDishPool.join("、")}。只返回合法 JSON，不要 markdown，不要解释，不要添加多余字段。`
-          : undefined,
       throwOnFailure: true,
       validate: (value) =>
         validateRecommendation(
@@ -909,8 +880,7 @@ ${body.retry && body.previousFood ? `- 绝对不能重复推荐：${body.previou
           rules,
           mealTime,
           history,
-          dishPool,
-          regionalDishPool
+          dishPool
         ),
     });
 
